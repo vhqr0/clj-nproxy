@@ -274,3 +274,45 @@
   "Construct keys struct."
   [& ksts]
   (->KeysStruct (partition 2 ksts)))
+
+;;; io utils
+
+(defn read-fn->input-stream
+  "Convert read fn to input stream.
+  read-fn:
+  - not eof: return non-empty bytes.
+  - eof: return empty bytes, nil or throw exception."
+  [read-fn & [close-fn]]
+  (let [vbuf (volatile! (ByteBuffer/allocate 0))
+        ensure-data-fn (fn []
+                         (let [remain (.remaining ^ByteBuffer @vbuf)]
+                           (if-not (zero? remain)
+                             remain
+                             (do
+                               (when-let [ba (try (read-fn) (catch Exception _))]
+                                 (vreset! vbuf (ByteBuffer/wrap (bytes ba))))
+                               (.remaining ^ByteBuffer @vbuf)))))
+        read-byte-fn (fn []
+                       (if (zero? (ensure-data-fn))
+                         -1
+                         (bit-and 0xff (.get ^ByteBuffer @vbuf))))
+        fill-bytes-fn (fn [b off len]
+                        (let [remain (ensure-data-fn)]
+                          (if (zero? remain)
+                            -1
+                            (let [n (min remain len)]
+                              (.get ^ByteBuffer @vbuf (bytes b) (int off) (int n))
+                              n))))]
+    (proxy [InputStream] []
+      (read
+        ([] (read-byte-fn))
+        ([b] (fill-bytes-fn b 0 (alength (bytes b))))
+        ([b off len] (fill-bytes-fn b off len)))
+      (close []
+        (when (some? close-fn)
+          (close-fn))))))
+
+^:rct/test
+(comment
+  (seq (read-struct (->st-bytes 5) (read-fn->input-stream #(byte-array [1 2 3 4])))) ; => [1 2 3 4 1]
+  )
