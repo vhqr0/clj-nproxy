@@ -1,0 +1,8 @@
+.nrepl-*
+.cpcache
+.lsp
+.clj-kondo
+.project
+.classpath
+.settings
+target
