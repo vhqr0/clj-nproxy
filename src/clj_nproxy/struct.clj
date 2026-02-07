@@ -1,7 +1,7 @@
 (ns clj-nproxy.struct
   (:refer-clojure :exclude [keys])
   (:import [java.util Arrays]
-           [java.io InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
+           [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
            [java.nio ByteBuffer ByteOrder]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -55,6 +55,76 @@
       (write-struct st os data))
     (.toByteArray os)))
 
+;;; combinators
+
+(defrecord WrapStruct [st unpack-fn pack-fn]
+  Struct
+  (read-struct [this is] (unpack-fn (read-struct st is)))
+  (write-struct [this os data] (write-struct st os (pack-fn data))))
+
+(defn wrap
+  "Construct wrap struct."
+  [st unpack-fn pack-fn]
+  (->WrapStruct st unpack-fn pack-fn))
+
+(defn read-tuple
+  "Read tuple from stream."
+  [^InputStream is sts]
+  (loop [data [] sts sts]
+    (if (empty? sts)
+      data
+      (let [data (conj data (read-struct (first sts) is))]
+        (recur data (rest sts))))))
+
+(defn write-tuple
+  "Write tuple to stream."
+  [^OutputStream os sts data]
+  (loop [data data sts sts]
+    (when (seq sts)
+      (write-struct (first sts) os (first data))
+      (recur (rest data) (rest sts)))))
+
+(defrecord TupleStruct [sts]
+  Struct
+  (read-struct [this is] (read-tuple is sts))
+  (write-struct [this os data] (write-tuple os sts data)))
+
+(defn tuple
+  "Construct tuple struct."
+  [& sts]
+  (->TupleStruct sts))
+
+(defn read-keys
+  "Read keys from stream."
+  [^InputStream is ksts]
+  (loop [data {} ksts ksts]
+    (if (empty? ksts)
+      data
+      (let [[k st] (first ksts)
+            st (if (fn? st) (st data) st)
+            data (assoc data k (read-struct st is))]
+        (recur data (rest ksts))))))
+
+(defn write-keys
+  "Write keys to stream."
+  [^OutputStream os ksts data]
+  (loop [ksts ksts]
+    (when (seq ksts)
+      (let [[k st] (first ksts)
+            st (if (fn? st) (st data) st)]
+        (write-struct st os (get data k)))
+      (recur (rest ksts)))))
+
+(defrecord KeysStruct [ksts]
+  Struct
+  (read-struct [this is] (read-keys is ksts))
+  (write-struct [this os data] (write-keys os ksts data)))
+
+(defn keys
+  "Construct keys struct."
+  [& ksts]
+  (->KeysStruct (partition 2 ksts)))
+
 ;;; bytes
 
 (defn read-bytes
@@ -87,6 +157,22 @@
   "Construct bytes struct."
   [len]
   (->BytesStruct len))
+
+(defrecord VarBytesStruct [st-len]
+  Struct
+  (read-struct [this is]
+    (let [len (read-struct st-len is)]
+      (read-bytes is len)))
+  (write-struct [this os data]
+    (let [data (bytes data)
+          len (alength data)]
+      (write-struct st-len os len)
+      (write-bytes os data))))
+
+(defn ->st-var-bytes
+  "Construct var bytes struct."
+  [st-len]
+  (->VarBytesStruct st-len))
 
 ;;; number
 
@@ -209,72 +295,15 @@
 (def st-uint-be   (->NumberStruct 4 unpack-uint-be pack-uint-be))
 (def st-uint-le   (->NumberStruct 4 unpack-uint-le pack-uint-le))
 
-;;; combinators
+;;; string
 
-(defrecord WrapStruct [st unpack-fn pack-fn]
-  Struct
-  (read-struct [this is] (unpack-fn (read-struct st is)))
-  (write-struct [this os data] (write-struct st os (pack-fn data))))
-
-(defn wrap
-  "Construct wrap struct."
-  [st unpack-fn pack-fn]
-  (->WrapStruct st unpack-fn pack-fn))
-
-(defn read-tuple
-  "Read tuple from stream."
-  [^InputStream is sts]
-  (loop [data [] sts sts]
-    (if (empty? sts)
-      data
-      (let [data (conj data (read-struct (first sts) is))]
-        (recur data (rest sts))))))
-
-(defn write-tuple
-  "Write tuple to stream."
-  [^OutputStream os sts data]
-  (loop [data data sts sts]
-    (when (seq sts)
-      (write-struct (first sts) os (first data))
-      (recur (rest data) (rest sts)))))
-
-(defrecord TupleStruct [sts]
-  Struct
-  (read-struct [this is] (read-tuple is sts))
-  (write-struct [this os data] (write-tuple os sts data)))
-
-(defn tuple
-  "Construct tuple struct."
-  [& sts]
-  (->TupleStruct sts))
-
-(defn read-keys
-  "Read keys from stream."
-  [^InputStream is ksts]
-  (loop [data {} ksts ksts]
-    (when (seq ksts)
-      (let [[k st] (first ksts)
-            data (assoc data k (read-struct st is))]
-        (recur data (rest ksts))))))
-
-(defn write-keys
-  "Write keys to stream."
-  [^OutputStream os ksts data]
-  (loop [ksts ksts]
-    (when (seq ksts)
-      (let [[k st] (first ksts)]
-        (write-struct st os (get data k)))
-      (recur (rest ksts)))))
-
-(defrecord KeysStruct [ksts]
-  Struct
-  (read-struct [this is] (read-keys is ksts))
-  (write-struct [this os data] (write-keys os ksts data)))
-
-(defn keys
-  "Construct keys struct."
-  [& ksts]
-  (->KeysStruct (partition 2 ksts)))
+(defn wrap-str
+  "Wrap bytes struct to string struct."
+  [st-bytes]
+  (-> st-bytes
+      (wrap
+       #(String. (bytes %))
+       #(.getBytes (str %)))))
 
 ;;; io utils
 
@@ -359,3 +388,29 @@
       ([b off len] (.write os (bytes b) (int off) (int len))))
     (flush [] (.flush os))
     (close [] (close-fn))))
+
+(defn mk-closeable
+  "Construct closeable object."
+  ^Closeable [close-fn]
+  (reify Closeable
+    (close [this] (close-fn))))
+
+(defn safe-close
+  "Safe close object."
+  [^Closeable o]
+  (try (.close o) (catch Exception _)))
+
+(defn copy
+  "Copy from input stream to output stream."
+  [^InputStream is ^OutputStream os]
+  (try
+    (let [b (byte-array 4096)]
+      (loop []
+        (let [n (.read is b)]
+          (when-not (= -1 n)
+            (.write os b 0 n)
+            (.flush os)
+            (recur)))))
+    (finally
+      (safe-close is)
+      (safe-close os))))
