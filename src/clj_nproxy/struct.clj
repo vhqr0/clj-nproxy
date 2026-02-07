@@ -130,6 +130,15 @@
 (def st-byte (->ByteStruct))
 (def st-ubyte (->UByteStruct))
 
+^:rct/test
+(comment
+  (seq (pack st-byte 127)) ; => [127]
+  (seq (pack st-byte -128)) ; => [-128]
+  (seq (pack st-ubyte 255)) ; => [-1]
+  (unpack st-byte (byte-array [-1])) ; => -1
+  (unpack st-ubyte (byte-array [-1])) ; => 255
+  )
+
 ;;;; number
 
 (defn unpack-short-be  [^bytes b] (-> b (ByteBuffer/wrap 0 2) (.getShort 0)))
@@ -172,6 +181,15 @@
 (def st-long-le   (->NumberStruct 8 unpack-long-le pack-long-le))
 (def st-float-le  (->NumberStruct 4 unpack-float-le pack-float-le))
 (def st-double-le (->NumberStruct 8 unpack-double-le pack-double-le))
+
+^:rct/test
+(comment
+  (seq (pack st-int-le 1)) ; => [1 0 0 0]
+  (seq (pack st-int-be 1)) ; => [0 0 0 1]
+  (unpack st-int-le (byte-array [1 0 0 0])) ; => 1
+  (unpack st-int-be (byte-array [1 0 0 0])) ; => 16777216
+  (unpack-many st-short-be (byte-array [1 0 0 0])) ; => [256 0]
+  )
 
 ;;;; unsigned int
 
