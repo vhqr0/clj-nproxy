@@ -312,6 +312,17 @@
         (when (some? close-fn)
           (close-fn))))))
 
+(defn write-fn->output-stream
+  "Convert write fn to output stream."
+  [write-fn & [close-fn]]
+  (proxy [OutputStream] []
+    (write
+      ([b] (write-fn (if (bytes? b) b (byte-array [b]))))
+      ([b off len] (write-fn (Arrays/copyOfRange (bytes b) (int off) (int (+ off len))))))
+    (close []
+      (when (some? close-fn)
+        (close-fn)))))
+
 ^:rct/test
 (comment
   (seq (read-struct (->st-bytes 5) (read-fn->input-stream #(byte-array [1 2 3 4])))) ; => [1 2 3 4 1]
