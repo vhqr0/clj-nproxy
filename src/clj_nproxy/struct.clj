@@ -1,6 +1,7 @@
 (ns clj-nproxy.struct
   (:refer-clojure :exclude [keys])
-  (:import [java.io InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
+  (:import [java.util Arrays]
+           [java.io InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
            [java.nio ByteBuffer ByteOrder]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -282,7 +283,7 @@
   read-fn:
   - not eof: return non-empty bytes.
   - eof: return empty bytes, nil or throw exception."
-  [read-fn & [close-fn]]
+  ^InputStream [read-fn & [close-fn]]
   (let [vbuf (volatile! (ByteBuffer/allocate 0))
         ensure-data-fn (fn []
                          (let [remain (.remaining ^ByteBuffer @vbuf)]
@@ -314,7 +315,7 @@
 
 (defn write-fn->output-stream
   "Convert write fn to output stream."
-  [write-fn & [close-fn]]
+  ^OutputStream [write-fn & [close-fn]]
   (proxy [OutputStream] []
     (write
       ([b] (write-fn (if (bytes? b) b (byte-array [b]))))
@@ -327,3 +328,34 @@
 (comment
   (seq (read-struct (->st-bytes 5) (read-fn->input-stream #(byte-array [1 2 3 4])))) ; => [1 2 3 4 1]
   )
+
+(defn input-stream-with-close-fn
+  "Return new input stream with custom close fn."
+  ^InputStream [^InputStream is close-fn]
+  (proxy [InputStream] []
+    (available [] (.available is))
+    (markSupported [] (.markSupported is))
+    (mark [limit] (.mark is limit))
+    (reset [] (.reset is))
+    (skip [n] (.skip is n))
+    (skipNBytes [n] (.skipNBytes is n))
+    (read
+      ([] (.read is))
+      ([b] (.read is b))
+      ([b off len] (.read is b off len)))
+    (readNBytes
+      ([n] (.readNBytes is n))
+      ([b off len] (.readNBytes is b off len)))
+    (readAllBytes [] (.readAllBytes is))
+    (transferTo [os] (.transferTo is os))
+    (close [] (close-fn))))
+
+(defn output-stream-with-close-fn
+  "Return new output stream with custom close fn."
+  ^OutputStream [^OutputStream os close-fn]
+  (proxy [OutputStream] []
+    (write
+      ([b] (if (bytes? b) (.write os (bytes b)) (.write os (int b))))
+      ([b off len] (.write os (bytes b) (int off) (int len))))
+    (flush [] (.flush os))
+    (close [] (close-fn))))
