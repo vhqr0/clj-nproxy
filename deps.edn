@@ -1,5 +1,6 @@
 {:paths   ["src"]
- :deps    {org.clojure/clojure {:mvn/version "1.12.4"}}
+ :deps    {org.clojure/clojure    {:mvn/version "1.12.4"}
+           org.clojure/core.async {:mvn/version "1.8.741"}}
  :aliases {:dev  {:extra-paths ["test"]
                   :extra-deps  {io.github.matthewdowney/rich-comment-tests {:git/tag "v1.0.3" :git/sha "a8711e9"}}}
            :test {:extra-deps {lambdaisland/kaocha           {:mvn/version "1.91.1392"}
