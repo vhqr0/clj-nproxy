@@ -5,6 +5,8 @@
             [clj-nproxy.proxy :as proxy])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (defmulti mk-inbound
   "Make proxy inbound based on options, return closeable object.
   callback: accept {:keys [input-stream output-stream host port]}"

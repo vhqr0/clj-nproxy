@@ -7,6 +7,8 @@
            [java.net URI]
            [java.net.http HttpClient WebSocket WebSocket$Builder WebSocket$Listener]))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (defn buffer->bytes
   "Convert byte buffer to bytes."
   ^bytes [^ByteBuffer buf]
@@ -30,7 +32,7 @@
       (a/close! ch)
       nil)))
 
-(def *http-client* (delay (HttpClient/newHttpClient)))
+(def ^:dynamic *http-client* (delay (HttpClient/newHttpClient)))
 
 (defmethod net/mk-client :ws [{:keys [uri]} callback]
   (let [ch (a/chan 1024)
@@ -43,8 +45,8 @@
             (st/read-fn->input-stream #(a/<!! ch)))
         os (BufferedOutputStream.
             (st/write-fn->output-stream
-             (fn [b] @(.sendBinary (ByteBuffer/wrap (bytes b)) true))
-             (fn [] @(.sendClose WebSocket/NORMAL_CLOSURE ""))))]
+             (fn [b] @(.sendBinary ws (ByteBuffer/wrap (bytes b)) true))
+             (fn [] @(.sendClose ws WebSocket/NORMAL_CLOSURE ""))))]
     (callback
      {:peer {:ws-uri uri}
       :input-stream is
