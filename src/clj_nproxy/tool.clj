@@ -4,5 +4,5 @@
 (defn start-server
   [opts]
   (add-tap prn)
-  (server/start-server opts)
+  (server/start-server (server/edn->server-opts opts))
   @(promise))

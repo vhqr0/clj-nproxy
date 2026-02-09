@@ -403,3 +403,6 @@
      {:peer {:vmess-uuid (:uuid id)}
       :input-stream (wrap-input-stream is params)
       :output-stream (wrap-output-stream os params)})))
+
+(defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
+  (assoc opts :id (->id uuid)))

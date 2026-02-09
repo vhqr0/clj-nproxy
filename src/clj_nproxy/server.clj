@@ -17,6 +17,11 @@
   callback: accept {:keys [input-stream output-stream]}"
   (fn [opts _host _port _callback] (:type opts)))
 
+(defmulti edn->inbound-opts :type)
+(defmulti edn->outbound-opts :type)
+(defmethod edn->inbound-opts :default [opts] opts)
+(defmethod edn->outbound-opts :default [opts] opts)
+
 (defmethod mk-outbound :block [_opts _host _port callback]
   (net/mk-client {:type :null} callback))
 
@@ -53,6 +58,16 @@
           {:peer (merge (:peer net-server) (:peer proxy-server))}
           (select-keys proxy-server [:input-stream :output-stream]))))))))
 
+(defmethod edn->inbound-opts :proxy [opts]
+  (-> opts
+      (update :net-opts net/edn->server-opts)
+      (update :proxy-opts proxy/edn->server-opts)))
+
+(defmethod edn->outbound-opts :proxy [opts]
+  (-> opts
+      (update :net-opts net/edn->client-opts)
+      (update :proxy-opts proxy/edn->client-opts)))
+
 (defmethod mk-inbound :multi [{:keys [inbounds]} callback]
   (let [inbounds (->> inbounds (mapv #(mk-inbound % callback)))]
     (st/mk-closeable
@@ -60,9 +75,15 @@
        (doseq [inbound inbounds]
          (st/safe-close inbound))))))
 
+(defmethod edn->inbound-opts :multi [opts]
+  (update opts :inbounds (partial mapv edn->inbound-opts)))
+
 (defmethod mk-outbound :rand-dispatch [{:keys [outbounds]} host port callback]
   (let [opts (rand-nth outbounds)]
     (mk-outbound opts host port callback)))
+
+(defmethod edn->outbound-opts :rand-dispatch [opts]
+  (update opts :outbounds (partial mapv edn->outbound-opts)))
 
 (defn match-tag
   "Match host's tag in tags."
@@ -89,6 +110,9 @@
      outbound host port
      (fn [server]
        (update server :peer merge {:tag tag})))))
+
+(defmethod edn->outbound-opts :tag-dispatch [opts]
+  (update opts :outbounds update-vals edn->outbound-opts))
 
 ;;; server
 
@@ -132,6 +156,12 @@
              (log-fn (merge
                       {:level :error :event :connect-error :client cinfo :host host :port port :error-str (str e)}
                       (when pr-error? {:error-pr-str (pr-str e)}))))))))))
+
+(defn edn->server-opts
+  [opts]
+  (-> opts
+      (update :inbound edn->inbound-opts)
+      (update :outbound edn->outbound-opts)))
 
 (comment
   (start-server {}))

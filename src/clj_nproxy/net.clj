@@ -17,6 +17,11 @@
   callback: accept {:keys [input-stream output-stream]}"
   (fn [opts _callback] (:type opts)))
 
+(defmulti edn->client-opts :type)
+(defmulti edn->server-opts :type)
+(defmethod edn->client-opts :default [opts] opts)
+(defmethod edn->server-opts :default [opts] opts)
+
 ;;; null
 
 (defmethod mk-client :null [_opts callback]
