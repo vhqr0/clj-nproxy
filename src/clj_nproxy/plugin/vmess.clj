@@ -68,7 +68,7 @@
         (st/pack st/st-uint-be r)
         (recur
          (unchecked-inc-int i)
-         (bit-and m (* p (bit-xor r (aget b i)))))))))
+         (bit-and m (* p (bit-xor r (bit-and 0xff (aget b i))))))))))
 
 ^:rct/test
 (comment
@@ -240,22 +240,22 @@
 (defn ->params
   "Generate params."
   []
-  (let [ts (long (/ (System/currentTimeMillis) 1000))
-        nonce (rand-bytes 4)
+  (let [nonce (rand-bytes 8)
         key (rand-bytes 16)
         iv (rand-bytes 16)
         rkey (Arrays/copyOf (bytes (sha256 key)) 16)
         riv (Arrays/copyOf (bytes (sha256 iv)) 16)
         verify (rand-int 256)
         padding (rand-bytes (rand-int 16))]
-    {:ts ts :nonce nonce :key key :iv iv :rkey rkey :riv riv
+    {:nonce nonce :key key :iv iv :rkey rkey :riv riv
      :verify verify :padding padding}))
 
 (defn ->eaid
   "Construct eaid (encrypted auth id) from id."
-  [id params]
+  [id]
   (let [{:keys [auth-key]} id
-        {:keys [ts nonce]} params
+        ts (long (/ (System/currentTimeMillis) 1000))
+        nonce (rand-bytes 4)
         ts+nonce (bcat (st/pack st/st-long-be ts) nonce)
         ts+nonce+crc32 (bcat ts+nonce (crc32 ts+nonce))]
     (aes128-ecb-encrypt auth-key ts+nonce+crc32)))
@@ -278,12 +278,14 @@
   "Construct request."
   ^bytes [params host port]
   (let [{:keys [key iv nonce verify padding]} params
-        plen+sec (+ 3 (bit-shift-right 4 (alength (bytes padding))))]
+        plen (alength (bytes padding))
+        plen+sec (+ 3 (bit-shift-left plen 4))]
     (st/pack st-req
              {:ver      1
               :iv       iv
               :key      key
-              :opts     5
+              :verify   verify
+              :opt      5
               :plen+sec plen+sec
               :keep     0
               :cmd      1
@@ -296,7 +298,7 @@
   ^bytes [id params host port]
   (let [{:keys [cmd-key]} id
         {:keys [nonce padding]} params
-        eaid (->eaid id params)
+        eaid (->eaid id)
         req (->req params host port)
         req+padding (bcat req padding)
         req+padding+fnv1a (bcat req+padding (fnv1a req+padding))
@@ -322,15 +324,15 @@
   "Read response from stream."
   [is params]
   (let [{:keys [verify rkey riv]} params
-        elen (st/read-bytes 18)
-        len (st/unpack st/st-short-be
+        elen (st/read-bytes is 18)
+        len (st/unpack st/st-ushort-be
                        (let [key (vkdf :resp-len-key 16 rkey)
                              iv (vkdf :resp-len-iv 12 riv)]
                          (aes128-gcm-decrypt key iv elen)))
-        eresp (st/read-bytes (+ 16 len))
+        eresp (st/read-bytes is (+ 16 len))
         resp (st/unpack st-resp
                         (let [key (vkdf :resp-key 16 rkey)
-                              iv (vkdf :resp-iv 16 riv)]
+                              iv (vkdf :resp-iv 12 riv)]
                           (aes128-gcm-decrypt key iv eresp)))]
     (when-not (= verify (:verify resp))
       (throw (st/data-error)))))
@@ -345,7 +347,8 @@
 
 (defn iv->read-iv-fn
   [iv]
-  (let [vctr (volatile! 0)]
+  (let [vctr (volatile! 0)
+        iv (Arrays/copyOfRange (bytes iv) 2 12)]
     (fn []
       (let [i @vctr]
         (vswap! vctr inc)
@@ -360,12 +363,12 @@
         vresp? (volatile! false)
         read-fn (fn []
                   (when-not @vresp?
-                    (read-resp is)
+                    (read-resp is params)
                     (vreset! vresp? true))
                   (let [mask (read-mask-fn)
                         iv (read-iv-fn)
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
-                        edata (st/read-bytes len)]
+                        edata (st/read-bytes is len)]
                     (aes128-gcm-decrypt rkey iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
@@ -393,8 +396,7 @@
      (st/write-fn->output-stream write-fn close-fn))))
 
 (defmethod proxy/mk-client :vmess [{:keys [id]} ^InputStream is ^OutputStream os host port callback]
-  (let [params (->params)
-        ereq (->ereq id params host port)]
+  (let [params (->params)]
     (.write os (->ereq id params host port))
     (.flush os)
     (callback
