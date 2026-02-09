@@ -59,8 +59,8 @@
 
 (defrecord WrapStruct [st unpack-fn pack-fn]
   Struct
-  (read-struct [this is] (unpack-fn (read-struct st is)))
-  (write-struct [this os data] (write-struct st os (pack-fn data))))
+  (read-struct [_ is] (unpack-fn (read-struct st is)))
+  (write-struct [_ os data] (write-struct st os (pack-fn data))))
 
 (defn wrap
   "Construct wrap struct."
@@ -86,13 +86,19 @@
 
 (defrecord TupleStruct [sts]
   Struct
-  (read-struct [this is] (read-tuple is sts))
-  (write-struct [this os data] (write-tuple os sts data)))
+  (read-struct [_ is] (read-tuple is sts))
+  (write-struct [_ os data] (write-tuple os sts data)))
 
 (defn tuple
   "Construct tuple struct."
   [& sts]
   (->TupleStruct sts))
+
+^:rct/test
+(comment
+  (seq (pack (tuple st-ubyte st-ubyte) [1 2])) ; => [1 2]
+  (unpack (tuple st-ubyte st-ubyte) (byte-array [1 2])) ; => [1 2]
+  )
 
 (defn read-keys
   "Read keys from stream."
@@ -117,13 +123,19 @@
 
 (defrecord KeysStruct [ksts]
   Struct
-  (read-struct [this is] (read-keys is ksts))
-  (write-struct [this os data] (write-keys os ksts data)))
+  (read-struct [_ is] (read-keys is ksts))
+  (write-struct [_ os data] (write-keys os ksts data)))
 
 (defn keys
   "Construct keys struct."
   [& ksts]
   (->KeysStruct (partition 2 ksts)))
+
+^:rct/test
+(comment
+  (seq (pack (keys :a st-ubyte :b st-ubyte) {:a 1 :b 2})) ; => [1 2]
+  (unpack (keys :a st-ubyte :b st-ubyte) (byte-array [1 2])) ; => {:a 1 :b 2}
+  )
 
 ;;; bytes
 
@@ -150,8 +162,8 @@
 
 (defrecord BytesStruct [^long len]
   Struct
-  (read-struct [this is] (read-bytes is len))
-  (write-struct [this os b] (write-bytes os b len)))
+  (read-struct [_ is] (read-bytes is len))
+  (write-struct [_ os b] (write-bytes os b len)))
 
 (defn ->st-bytes
   "Construct bytes struct."
@@ -160,10 +172,10 @@
 
 (defrecord VarBytesStruct [st-len]
   Struct
-  (read-struct [this is]
+  (read-struct [_ is]
     (let [len (read-struct st-len is)]
       (read-bytes is len)))
-  (write-struct [this os data]
+  (write-struct [_ os data]
     (let [data (bytes data)
           len (alength data)]
       (write-struct st-len os len)
@@ -206,13 +218,13 @@
 
 (defrecord ByteStruct []
   Struct
-  (read-struct [this is] (read-byte is))
-  (write-struct [this os i] (write-byte os i)))
+  (read-struct [_ is] (read-byte is))
+  (write-struct [_ os i] (write-byte os i)))
 
 (defrecord UByteStruct []
   Struct
-  (read-struct [this is] (read-ubyte is))
-  (write-struct [this os i] (write-ubyte os i)))
+  (read-struct [_ is] (read-ubyte is))
+  (write-struct [_ os i] (write-ubyte os i)))
 
 (def st-byte (->ByteStruct))
 (def st-ubyte (->UByteStruct))
@@ -254,8 +266,8 @@
 
 (defrecord NumberStruct [^long len unpack-fn pack-fn]
   Struct
-  (read-struct [this is] (unpack-fn (read-bytes is len)))
-  (write-struct [this os n] (write-bytes os (pack-fn n))))
+  (read-struct [_ is] (unpack-fn (read-bytes is len)))
+  (write-struct [_ os n] (write-bytes os (pack-fn n))))
 
 (def st-short-be  (->NumberStruct 2 unpack-short-be pack-short-be))
 (def st-int-be    (->NumberStruct 4 unpack-int-be pack-int-be))
@@ -295,6 +307,13 @@
 (def st-uint-be   (->NumberStruct 4 unpack-uint-be pack-uint-be))
 (def st-uint-le   (->NumberStruct 4 unpack-uint-le pack-uint-le))
 
+^:rct/test
+(comment
+  (seq (pack st-ushort-be 65535)) ; => [-1 -1]
+  (seq (pack st-ushort-le 0xff00)) ; => [0 -1]
+  (unpack st-ushort-be (byte-array [-1 -1])) ; => 65535
+  )
+
 ;;; string
 
 (defn wrap-str
@@ -305,13 +324,19 @@
        #(String. (bytes %))
        #(.getBytes (str %)))))
 
+^:rct/test
+(comment
+  (seq (pack (wrap-str (->st-bytes 5)) "hello")) ; => [104 101 108 108 111]
+  (unpack (wrap-str (->st-bytes 5)) (.getBytes "hello")) ; => "hello"
+  )
+
 ;;; io utils
 
 (defn read-fn->input-stream
   "Convert read fn to input stream.
   read-fn:
   - not eof: return non-empty bytes.
-  - eof: return empty bytes, nil or throw exception."
+  - eof: return empty bytes nil or throw exception."
   ^InputStream [read-fn & [close-fn]]
   (let [vbuf (volatile! (ByteBuffer/allocate 0))
         ensure-data-fn (fn []
@@ -342,6 +367,11 @@
         (when (some? close-fn)
           (close-fn))))))
 
+^:rct/test
+(comment
+  (seq (read-struct (->st-bytes 5) (read-fn->input-stream #(byte-array [1 2 3 4])))) ; => [1 2 3 4 1]
+  )
+
 (defn write-fn->output-stream
   "Convert write fn to output stream."
   ^OutputStream [write-fn & [close-fn]]
@@ -352,11 +382,6 @@
     (close []
       (when (some? close-fn)
         (close-fn)))))
-
-^:rct/test
-(comment
-  (seq (read-struct (->st-bytes 5) (read-fn->input-stream #(byte-array [1 2 3 4])))) ; => [1 2 3 4 1]
-  )
 
 (defn input-stream-with-close-fn
   "Return new input stream with custom close fn."
@@ -393,7 +418,7 @@
   "Construct closeable object."
   ^Closeable [close-fn]
   (reify Closeable
-    (close [this] (close-fn))))
+    (close [_] (close-fn))))
 
 (defn safe-close
   "Safe close object."

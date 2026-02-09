@@ -6,7 +6,6 @@
            [java.util.zip CRC32]
            [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.security SecureRandom MessageDigest]
-           [java.security.spec AlgorithmParameterSpec]
            [javax.crypto Cipher]
            [javax.crypto.spec SecretKeySpec GCMParameterSpec]
            [org.bouncycastle.crypto.digests SHAKEDigest]))
@@ -234,7 +233,7 @@
   (let [cmd-key (md5 (bcat
                       (hex->bytes (str/replace uuid "-" ""))
                       (.getBytes ^String vmess-uuid)))
-        auth-key (vkdf :aid 16 cmd-key [])]
+        auth-key (vkdf :aid 16 cmd-key)]
     {:uuid uuid :cmd-key cmd-key :auth-key auth-key}))
 
 (defn ->params

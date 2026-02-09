@@ -72,7 +72,7 @@
         ^SocketFactory fac (if ssl?
                              (SSLSocketFactory/getDefault)
                              (SocketFactory/getDefault))
-        socket (.createSocket fac ^String host ^int port)]
+        ^Socket socket (.createSocket fac ^String host ^int port)]
     (socket-callback socket callback)))
 
 (defmethod mk-server :tcp [opts callback]
@@ -80,7 +80,7 @@
         ^ServerSocketFactory fac (if ssl?
                                    (SSLServerSocketFactory/getDefault)
                                    (ServerSocketFactory/getDefault))
-        server (.createServerSocket fac port backlog (InetAddress/getByName host))]
+        ^ServerSocket server (.createServerSocket fac port backlog (InetAddress/getByName host))]
     (Thread/startVirtualThread
      (fn []
        (with-open [server server]

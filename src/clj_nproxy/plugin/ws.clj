@@ -5,7 +5,7 @@
   (:import [java.io BufferedInputStream BufferedOutputStream]
            [java.nio ByteBuffer]
            [java.net URI]
-           [java.net.http HttpClient WebSocket WebSocket$Builder WebSocket$Listener]))
+           [java.net.http HttpClient WebSocket WebSocket$Listener]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -20,15 +20,15 @@
   "Convert channel to websocket listener."
   ^WebSocket$Listener [ch]
   (reify WebSocket$Listener
-    (onText [this ws s last?]
+    (onText [_ _ws _s _last?]
       (throw (st/data-error))
       nil)
-    (onBinary [this ws buf last?]
+    (onBinary [_ ws buf _last?]
       (when-not (zero? (.remaining buf))
         (a/>!! ch (buffer->bytes buf)))
       (.request ^WebSocket ws 1)
       nil)
-    (onClose [this ws status reason]
+    (onClose [_ _ws _status _reason]
       (a/close! ch)
       nil)))
 

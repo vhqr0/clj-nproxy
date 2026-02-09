@@ -2,6 +2,7 @@
   (:require [clj-nproxy.server :as server]))
 
 (defn start-server
+  "Start proxy server."
   [opts]
   (run! require (:plugins opts))
   (add-tap prn)
