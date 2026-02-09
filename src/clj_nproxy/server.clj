@@ -109,7 +109,7 @@
     (mk-outbound
      outbound host port
      (fn [server]
-       (update server :peer merge {:tag tag})))))
+       (callback (update server :peer merge {:tag tag}))))))
 
 (defmethod edn->outbound-opts :tag-dispatch [opts]
   (update opts :outbounds update-vals edn->outbound-opts))
@@ -121,21 +121,16 @@
   [client server]
   (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
     (with-open [scope (StructuredTaskScope/open joiner)]
-      (let [f1 (.fork scope ^Runnable #(st/copy (:input-stream client) (:output-stream server)))
-            f2 (.fork scope ^Runnable #(st/copy (:input-stream server) (:output-stream client)))]
+      (let [_ (.fork scope ^Runnable #(st/copy (:input-stream client) (:output-stream server)))
+            _ (.fork scope ^Runnable #(st/copy (:input-stream server) (:output-stream client)))]
         (.join scope)))))
-
-(def default-server-opts
-  {:inbound {:type :proxy
-             :net-opts {:type :tcp :port 1080}
-             :proxy-opts {:type :socks5}}
-   :outbound {:type :direct}
-   :log-fn prn})
 
 (defn start-server
   "Start proxy server."
   [opts]
-  (let [{:keys [inbound outbound log-fn pr-error?]} (merge default-server-opts opts)]
+  (let [{:keys [inbound outbound log-fn pr-error?]
+         :or {log-fn prn pr-error? false}}
+        opts]
     (mk-inbound
      inbound
      (fn [{:keys [host port] cinfo :peer :as client}]
