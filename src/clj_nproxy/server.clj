@@ -130,7 +130,7 @@
              :net-opts {:type :tcp :port 1080}
              :proxy-opts {:type :socks5}}
    :outbound {:type :direct}
-   :log-fn tap>})
+   :log-fn prn})
 
 (defn start-server
   "Start proxy server."
@@ -140,21 +140,21 @@
      inbound
      (fn [{:keys [host port] cinfo :peer :as client}]
        (let [cinfo (assoc cinfo :req-id (str (random-uuid)))]
-         (log-fn {:level :info :event :connect :client cinfo :host host :port port})
+         (log-fn {:timestamp (System/currentTimeMillis) :level :info :event :connect :client cinfo :host host :port port})
          (try
            (mk-outbound
             outbound host port
             (fn [{sinfo :peer :as server}]
-              (log-fn {:level :info :event :pipe :client cinfo :server sinfo})
+              (log-fn {:timestamp (System/currentTimeMillis) :level :info :event :pipe :client cinfo :server sinfo})
               (try
                 (pipe client server)
                 (catch Exception e
                   (log-fn (merge
-                           {:level :error :event :pipe-error :client cinfo :server sinfo :error-str (str e)}
+                           {:timestamp (System/currentTimeMillis) :level :error :event :pipe-error :client cinfo :server sinfo :error-str (str e)}
                            (when pr-error? {:error-pr-str (pr-str e)})))))))
            (catch Exception e
              (log-fn (merge
-                      {:level :error :event :connect-error :client cinfo :host host :port port :error-str (str e)}
+                      {:timestamp (System/currentTimeMillis) :level :error :event :connect-error :client cinfo :host host :port port :error-str (str e)}
                       (when pr-error? {:error-pr-str (pr-str e)}))))))))))
 
 (defn edn->server-opts

@@ -3,6 +3,10 @@
 
 (defn start-server
   [opts]
+  (run! require (:plugins opts))
   (add-tap prn)
-  (server/start-server (server/edn->server-opts opts))
+  (server/start-server
+   (merge
+    (server/edn->server-opts opts)
+    {:log-fn tap>}))
   @(promise))
