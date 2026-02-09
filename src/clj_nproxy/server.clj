@@ -28,7 +28,7 @@
 (defmethod mk-outbound :direct [_opts host port callback]
   (net/mk-client {:type :tcp :host host :port port} callback))
 
-(defmethod mk-inbound :proxy [{:keys [net-opts proxy-opts]} callback]
+(defmethod mk-inbound :proxy [{:keys [name net-opts proxy-opts]} callback]
   (net/mk-server
    net-opts
    (fn [net-client]
@@ -39,10 +39,10 @@
       (fn [proxy-client]
         (callback
          (merge
-          {:peer (merge (:peer net-client) (:peer proxy-client))}
+          {:peer (merge (when (some? name) {:name name}) (:peer net-client) (:peer proxy-client))}
           (select-keys proxy-client [:input-stream :output-stream :host :port]))))))))
 
-(defmethod mk-outbound :proxy [{:keys [net-opts proxy-opts]} host port callback]
+(defmethod mk-outbound :proxy [{:keys [name net-opts proxy-opts]} host port callback]
   (net/mk-client
    net-opts
    (fn [net-server]
@@ -55,7 +55,7 @@
       (fn [proxy-server]
         (callback
          (merge
-          {:peer (merge (:peer net-server) (:peer proxy-server))}
+          {:peer (merge (when (some? name) {:name name}) (:peer net-server) (:peer proxy-server))}
           (select-keys proxy-server [:input-stream :output-stream]))))))))
 
 (defmethod edn->inbound-opts :proxy [opts]

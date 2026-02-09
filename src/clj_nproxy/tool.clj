@@ -1,5 +1,6 @@
 (ns clj-nproxy.tool
-  (:require [clj-nproxy.server :as server]))
+  (:require [clj-nproxy.server :as server]
+            [clj-nproxy.tool.core :as core]))
 
 (def default-server-opts
   {:inbound {:type :proxy
@@ -9,12 +10,12 @@
 
 (defn start-server
   "Start proxy server."
-  [opts]
-  (let [opts (merge default-server-opts opts)]
-    (run! require (:plugins opts))
+  [{:keys [config-name] :or {config-name "config.edn"} :as opts}]
+  (let [server-opts (merge default-server-opts (core/read-edn opts config-name))]
+    (run! require (:plugins server-opts))
     (add-tap prn)
     (server/start-server
      (merge
-      (server/edn->server-opts opts)
+      (server/edn->server-opts server-opts)
       {:log-fn tap>})))
   @(promise))
