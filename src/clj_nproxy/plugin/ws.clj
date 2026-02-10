@@ -32,13 +32,10 @@
       (a/close! ch)
       nil)))
 
-(def ^:dynamic *http-client* (delay (HttpClient/newHttpClient)))
-
-(defmethod net/mk-client :ws [{:keys [uri]} callback]
+(defmethod net/mk-client :ws [{:keys [uri client]} callback]
   (let [ch (a/chan 1024)
-        ^HttpClient client (force *http-client*)
         ^WebSocket ws @(.buildAsync
-                        (.newWebSocketBuilder client)
+                        (.newWebSocketBuilder ^HttpClient client)
                         (URI/create uri)
                         (ch->listener ch))
         is (BufferedInputStream.
@@ -51,3 +48,6 @@
      {:peer {:ws-uri uri}
       :input-stream is
       :output-stream os})))
+
+(defmethod net/edn->client-opts :ws [opts]
+  (assoc opts :client (HttpClient/newHttpClient)))
