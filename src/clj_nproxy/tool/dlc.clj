@@ -3,6 +3,8 @@
             [clj-nproxy.tool.core :as core])
   (:import [java.io File]))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (defn data-file
   [opts name]
   (let [{:keys [data-dir] :or {data-dir "domain-list-community/data"}} opts]
@@ -11,6 +13,7 @@
 (def line-re
   #"^((\w+):)?([^\s\t#]+)( @([^\s\t#]+))?")
 
+^:rct/test
 (comment
   (re-matches line-re "a.baidu.com") ; => ["a.baidu.com" nil nil "a.baidu.com" nil nil]
   (re-matches line-re "a.baidu.com @ads") ; => ["a.baidu.com @ads" nil nil "a.baidu.com" " @ads" "ads"]
@@ -20,7 +23,7 @@
 (def tag-map
   {"ads" :block "cn" :direct "!cn" :proxy})
 
-(defn tags-seq
+(defn read-tags
   "Return seq of tags."
   [opts name default-tag]
   (->> (slurp (data-file opts name))
@@ -36,7 +39,7 @@
                                           tag (get tag-map tag default-tag)]
                                       [[domain tag]])
                   "include" (let [name (get matches 3)]
-                              (tags-seq opts name default-tag))
+                              (read-tags opts name default-tag))
                   ;; we don't support regexp yet
                   "regexp" nil
                   (prn {:type :parse-error :line line}))
@@ -47,5 +50,5 @@
   (core/write-content
    opts "tags.edn"
    (into {} (concat
-             (tags-seq opts "cn" :direct)
-             (tags-seq opts "geolocation-!cn" :proxy)))))
+             (read-tags opts "cn" :direct)
+             (read-tags opts "geolocation-!cn" :proxy)))))
