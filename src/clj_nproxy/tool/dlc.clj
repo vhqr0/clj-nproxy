@@ -5,8 +5,8 @@
 
 (defn data-file
   [opts name]
-  (let [{:keys [data-path] :or {data-path "domain-list-community/data"}} opts]
-    (File. (str data-path "/" name))))
+  (let [{:keys [data-dir] :or {data-dir "domain-list-community/data"}} opts]
+    (File. (str data-dir "/" name))))
 
 (def line-re
   #"^((\w+):)?([^\s\t#]+)( @([^\s\t#]+))?")

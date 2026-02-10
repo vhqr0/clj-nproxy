@@ -4,14 +4,14 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
-(defn file
+(defn config-file
   [opts name]
   (let [{:keys [config-dir] :or {config-dir ".nproxy"}} opts]
     (File. (str config-dir "/" name))))
 
 (defn read-text
   [opts name]
-  (slurp (file opts name)))
+  (slurp (config-file opts name)))
 
 (defn read-edn
   [opts name]
@@ -21,4 +21,4 @@
 
 (defn write-content
   [opts name content]
-  (spit (file opts name) content))
+  (spit (config-file opts name) content))
