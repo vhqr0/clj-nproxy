@@ -399,8 +399,7 @@
     (.write os (->ereq id params host port))
     (.flush os)
     (callback
-     {:peer {:vmess-uuid (:uuid id)}
-      :input-stream (wrap-input-stream is params)
+     {:input-stream (wrap-input-stream is params)
       :output-stream (wrap-output-stream os params)})))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]

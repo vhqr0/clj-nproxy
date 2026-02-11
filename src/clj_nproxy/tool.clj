@@ -2,6 +2,9 @@
   (:require [clj-nproxy.server :as server]
             [clj-nproxy.tool.core :as core]))
 
+;; ugly hack: allow rewrite host header
+(System/setProperty "jdk.httpclient.allowRestrictedHeaders" "host")
+
 (def default-server-opts
   {:inbound {:type :proxy
              :net-opts {:type :tcp :port 1080}

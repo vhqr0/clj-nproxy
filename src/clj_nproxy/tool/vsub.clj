@@ -25,14 +25,19 @@
 (defn node->outbound-opts
   "Convert node to vmess outbound opts."
   [node]
-  (let [{:strs [ps id add port net tls path] :or {net "tcp" path "/"}} node
+  (let [{:strs [ps id add port net tls host path] :or {net "tcp" path "/"}} node
         port (parse-long port)
-        tls? (= tls "tls")]
+        ssl? (= tls "tls")]
     {:type :proxy
      :name ps
      :net-opts (case net
-                 "tcp" {:type :tcp :host add :port port :ssl? tls?}
-                 "ws" {:type :ws :uri (format "%s://%s:%d%s" (if tls? "wss" "ws") add port path)})
+                 "tcp" {:type :tcp :host add :port port :ssl? ssl?}
+                 "ws" (let [schema (if ssl? "wss" "ws")
+                            uri (format "%s://%s:%d%s" schema add port path)]
+                        (merge
+                         {:type :ws :uri uri}
+                         (when (some? host)
+                           {:headers {"host" host}}))))
      :proxy-opts {:type :vmess :uuid id}}))
 
 (defn read-nodes
