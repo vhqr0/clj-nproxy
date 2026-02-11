@@ -134,8 +134,9 @@
     (mk-inbound
      inbound
      (fn [{:keys [host port] cinfo :peer :as client}]
-       (let [cinfo (assoc cinfo :req-id (str (random-uuid)))]
-         (log-fn {:timestamp (System/currentTimeMillis) :level :info :event :connect :client cinfo :host host :port port})
+       (let [req {:id (str (random-uuid)) :host host :port port}
+             cinfo (assoc cinfo :req req)]
+         (log-fn {:timestamp (System/currentTimeMillis) :level :info :event :connect :client cinfo})
          (try
            (mk-outbound
             outbound host port
@@ -149,7 +150,7 @@
                            (when pr-error? {:error-pr-str (pr-str e)})))))))
            (catch Exception e
              (log-fn (merge
-                      {:timestamp (System/currentTimeMillis) :level :error :event :connect-error :client cinfo :host host :port port :error-str (str e)}
+                      {:timestamp (System/currentTimeMillis) :level :error :event :connect-error :client cinfo :error-str (str e)}
                       (when pr-error? {:error-pr-str (pr-str e)}))))))))))
 
 (defn edn->server-opts
