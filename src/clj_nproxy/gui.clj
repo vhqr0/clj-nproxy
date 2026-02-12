@@ -6,7 +6,7 @@
            [java.awt BorderLayout FlowLayout]
            [java.awt.event ActionListener WindowListener]
            [javax.swing
-            JFrame JPanel JLabel JComboBox
+            JFrame JPanel JLabel JButton JComboBox
             JScrollPane JTable RowFilter Timer SwingUtilities]
            [javax.swing.table AbstractTableModel TableRowSorter]))
 
@@ -145,11 +145,17 @@
         scroll-pane (JScrollPane. table)
         level-combo (JComboBox. (object-array ["ALL" "INFO" "ERROR"]))
         event-combo (JComboBox. (object-array ["ALL" "CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"]))
+        clear-button (doto (JButton. "Clear")
+                       (.addActionListener
+                        (reify ActionListener
+                          (actionPerformed [_ _]
+                            (reset! astat nil)))))
         filter-panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
                        (.add (JLabel. "Level:"))
                        (.add level-combo)
                        (.add (JLabel. "Event:"))
-                       (.add event-combo))
+                       (.add event-combo)
+                       (.add clear-button))
         update-filter-fn (fn []
                            (let [level-filter (let [level (.getSelectedItem level-combo)]
                                                 (when-not (= level "ALL")
