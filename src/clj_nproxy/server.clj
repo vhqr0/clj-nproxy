@@ -159,7 +159,7 @@
            (mk-outbound
             outbound host port
             (fn [{sinfo :peer :as server}]
-              (log-fn (->info-log :pile {:req req :client cinfo :server sinfo}))
+              (log-fn (->info-log :pipe {:req req :client cinfo :server sinfo}))
               (try
                 (pipe client server)
                 (catch Exception error
