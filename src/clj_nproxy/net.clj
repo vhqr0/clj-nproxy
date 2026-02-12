@@ -1,7 +1,7 @@
 (ns clj-nproxy.net
   (:require [clj-nproxy.struct :as st])
   (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
-           [java.net InetAddress InetSocketAddress Socket ServerSocket]
+           [java.net InetSocketAddress Socket ServerSocket]
            [javax.net SocketFactory ServerSocketFactory]
            [javax.net.ssl SSLSocketFactory SSLServerSocketFactory]))
 
