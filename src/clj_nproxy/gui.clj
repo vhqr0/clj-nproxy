@@ -33,10 +33,9 @@
         {:level :error :event :pipe-error}]
        (reduce update-stat nil))
   ;; =>
-  {:logs   [{:level :info :event :connect :req {:host "foo.bar"}}
-            {:level :info :event :pipe :server {:tag "proxy"}}
+  {:logs   [{:level :info :event :connect}
+            {:level :info :event :pipe :req {:host "foo.bar"} :server {:tag "proxy"}}
             {:level :error :event :pipe-error}]
-   :total  3
    :levels {:info 2 :error 1}
    :events {:connect 1 :pipe 1 :pipe-error 1}
    :hosts  {"foo.bar" 1}
