@@ -76,11 +76,11 @@
     (socket-callback socket callback)))
 
 (defmethod mk-server :tcp [opts callback]
-  (let [{:keys [host port backlog ssl?] :or {host "localhost" backlog 0}} opts
+  (let [{:keys [port ssl?]} opts
         ^ServerSocketFactory fac (if ssl?
                                    (SSLServerSocketFactory/getDefault)
                                    (ServerSocketFactory/getDefault))
-        ^ServerSocket server (.createServerSocket fac port backlog (InetAddress/getByName host))]
+        ^ServerSocket server (.createServerSocket fac port)]
     (Thread/startVirtualThread
      (fn []
        (with-open [server server]
