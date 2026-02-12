@@ -20,7 +20,6 @@
         tag (when (= event :pipe) (get-in log [:server :tag]))
         stat (-> stat
                  (update :logs (fnil conj []) log)
-                 (update :total (fnil inc 0))
                  (update-in [:levels level] (fnil inc 0))
                  (update-in [:events event] (fnil inc 0)))]
     (cond-> stat
@@ -29,16 +28,8 @@
 
 ^:rct/test
 (comment
-  (update-stat nil {:level :info :event :connect :req {:host "foo.bar"}})
-  ;; =>
-  {:logs   [{:level :info :event :connect :req {:host "foo.bar"}}]
-   :total  1
-   :levels {:info 1}
-   :events {:connect 1}
-   :hosts  {"foo.bar" 1}}
-
-  (->> [{:level :info :event :connect :req {:host "foo.bar"}}
-        {:level :info :event :pipe :server {:tag "proxy"}}
+  (->> [{:level :info :event :connect}
+        {:level :info :event :pipe :req {:host "foo.bar"} :server {:tag "proxy"}}
         {:level :error :event :pipe-error}]
        (reduce update-stat nil))
   ;; =>
