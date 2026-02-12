@@ -176,17 +176,6 @@
         scroll-pane (JScrollPane. table)
         level-combo (JComboBox. (object-array ["ALL" "INFO" "ERROR"]))
         event-combo (JComboBox. (object-array ["ALL" "CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"]))
-        clear-button (doto (JButton. "Clear")
-                       (.addActionListener
-                        (reify ActionListener
-                          (actionPerformed [_ _]
-                            (reset! astat nil)))))
-        filter-panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
-                       (.add (JLabel. "Level:"))
-                       (.add level-combo)
-                       (.add (JLabel. "Event:"))
-                       (.add event-combo)
-                       (.add clear-button))
         update-filter-fn (fn []
                            (let [level-filter (let [level (.getSelectedItem level-combo)]
                                                 (when-not (= level "ALL")
@@ -206,6 +195,17 @@
         _ (.addActionListener event-combo
                               (reify ActionListener
                                 (actionPerformed [_ _] (update-filter-fn))))
+        clear-button (doto (JButton. "Clear")
+                       (.addActionListener
+                        (reify ActionListener
+                          (actionPerformed [_ _]
+                            (reset! astat nil)))))
+        filter-panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
+                       (.add (JLabel. "Level:"))
+                       (.add level-combo)
+                       (.add (JLabel. "Event:"))
+                       (.add event-combo)
+                       (.add clear-button))
         tags-label (doto (JLabel. "Tags: ")
                      (.setFont (Font. Font/MONOSPACED Font/PLAIN 12)))
         hosts-label (doto (JLabel. "Hosts: ")
@@ -241,7 +241,7 @@
       (.add north-panel BorderLayout/NORTH)
       (.add scroll-pane BorderLayout/CENTER)
       (.setSize 960 640)
-      (.setDefaultCloseOperation JFrame/DISPOSE_ON_CLOSE)
+      (.setDefaultCloseOperation JFrame/EXIT_ON_CLOSE)
       (.setVisible true))))
 
 (def default-opts
@@ -252,7 +252,6 @@
   [opts]
   (let [opts (merge default-opts opts)
         astat (atom {})]
-    (add-tap prn)
     (add-tap #(swap! astat update-stat %))
     (cli/start-server-from-config opts)
     (SwingUtilities/invokeLater #(astat->gui astat))
