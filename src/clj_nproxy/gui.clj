@@ -16,7 +16,7 @@
   "Update stat when receive new event."
   [stat log]
   (let [{:keys [level event]} log
-        host (when (= event :connect) (get-in log [:req :host]))
+        host (when (= event :pipe) (get-in log [:req :host]))
         tag (when (= event :pipe) (get-in log [:server :tag]))
         stat (-> stat
                  (update :logs (fnil conj []) log)
