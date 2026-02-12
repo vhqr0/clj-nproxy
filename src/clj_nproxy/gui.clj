@@ -15,18 +15,15 @@
 (defn add-to-history
   "Add item to history."
   [history item max-items]
-  (let [history (conj (or history []) item)
-        cur-items (count history)]
-    (if-not (and (some? max-items) (> cur-items max-items))
-      history
-      (subvec history (- cur-items max-items) cur-items))))
+  (vec (cond->> (cons item history)
+         (some? max-items) (take max-items))))
 
 ^:rct/test
 (comment
   (add-to-history nil 1 2) ; => [1]
-  (add-to-history [1] 2 2) ; => [1 2]
-  (add-to-history [1 2] 3 2) ; => [2 3]
-  (add-to-history [1 2] 3 nil) ; => [1 2 3]
+  (add-to-history [1] 2 2) ; => [2 1]
+  (add-to-history [2 1] 3 2) ; => [3 2]
+  (add-to-history [2 1] 3 nil) ; => [3 2 1]
   )
 
 (defn update-stat
@@ -50,11 +47,9 @@
         {:level :error :event :pipe-error}]
        (reduce update-stat nil))
   ;; =>
-  {:logs   [{:level :info :event :connect}
+  {:logs   [{:level :error :event :pipe-error}
             {:level :info :event :pipe :req {:host "foo.bar"} :server {:tag "proxy"}}
-            {:level :error :event :pipe-error}]
-   :levels {:info 2 :error 1}
-   :events {:connect 1 :pipe 1 :pipe-error 1}
+            {:level :info :event :connect}]
    :hosts  {"foo.bar" 1}
    :tags   {"proxy" 1}})
 
