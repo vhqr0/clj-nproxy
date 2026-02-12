@@ -12,19 +12,39 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
+(defn add-to-history
+  "Add item to history."
+  [history item max-items]
+  (let [history (conj (or history []) item)
+        cur-items (count history)]
+    (if-not (and (some? max-items) (> cur-items max-items))
+      history
+      (subvec history (- cur-items max-items) cur-items))))
+
+^:rct/test
+(comment
+  (add-to-history nil 1 2) ; => [1]
+  (add-to-history [1] 2 2) ; => [1 2]
+  (add-to-history [1 2] 3 2) ; => [2 3]
+  (add-to-history [1 2] 3 nil) ; => [1 2 3]
+  )
+
 (defn update-stat
   "Update stat when receive new event."
-  [stat log]
-  (let [{:keys [level event]} log
-        host (when (= event :pipe) (get-in log [:req :host]))
-        tag (when (= event :pipe) (get-in log [:server :tag]))
-        stat (-> stat
-                 (update :logs (fnil conj []) log)
-                 (update-in [:levels level] (fnil inc 0))
-                 (update-in [:events event] (fnil inc 0)))]
-    (cond-> stat
-      (some? host) (update-in [:hosts host] (fnil inc 0))
-      (some? tag) (update-in [:tags tag] (fnil inc 0)))))
+  ([stat log]
+   (update-stat stat log nil))
+  ([stat log opts]
+   (let [{:keys [max-logs]} opts
+         {:keys [level event]} log
+         host (when (= event :pipe) (get-in log [:req :host]))
+         tag (when (= event :pipe) (get-in log [:server :tag]))
+         stat (-> stat
+                  (update :logs add-to-history log max-logs)
+                  (update-in [:levels level] (fnil inc 0))
+                  (update-in [:events event] (fnil inc 0)))]
+     (cond-> stat
+       (some? host) (update-in [:hosts host] (fnil inc 0))
+       (some? tag) (update-in [:tags tag] (fnil inc 0))))))
 
 ^:rct/test
 (comment
@@ -174,10 +194,14 @@
       (.setDefaultCloseOperation JFrame/DISPOSE_ON_CLOSE)
       (.setVisible true))))
 
+(def default-opts
+  {:max-logs 1000})
+
 (defn start-server
   "Start proxy server with gui."
   [opts]
-  (let [astat (atom {})]
+  (let [opts (merge default-opts opts)
+        astat (atom {})]
     (add-tap prn)
     (add-tap #(swap! astat update-stat %))
     (cli/start-server-from-config opts)
