@@ -31,7 +31,7 @@
   ([stat log]
    (update-stat stat log nil))
   ([stat log opts]
-   (let [{:keys [max-logs]} opts
+   (let [{:keys [max-logs] :or {max-logs 1000}} opts
          {:keys [event]} log
          host (when (= event :pipe) (get-in log [:req :host]))
          tag (when (= event :pipe) (get-in log [:server :tag]))
@@ -242,15 +242,11 @@
       (.setDefaultCloseOperation JFrame/EXIT_ON_CLOSE)
       (.setVisible true))))
 
-(def default-opts
-  {:max-logs 1000})
-
 (defn start-server
   "Start proxy server with gui."
   [opts]
-  (let [opts (merge default-opts opts)
-        astat (atom {})]
-    (add-tap #(swap! astat update-stat %))
+  (let [astat (atom {})]
+    (add-tap #(swap! astat update-stat % opts))
     (cli/start-server-from-config opts)
     (SwingUtilities/invokeLater #(astat->gui astat))
     @(promise)))
