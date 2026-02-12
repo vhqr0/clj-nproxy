@@ -61,7 +61,7 @@
 
 (defn get-display-data
   "Get display data at row:col."
-  ^String [logs row col]
+  [logs row col]
   (let [log (nth logs row)
         data-type (col->data-type col)]
     (get-display-data-from-log data-type log)))
@@ -124,7 +124,7 @@
 
 (defn astat->gui
   "Convert atom stat to gui."
-  [astat]
+  ^JFrame [astat]
   (let [frame (JFrame. "nproxy")
         model (astat->table-model astat)
         sorter (TableRowSorter. model)
