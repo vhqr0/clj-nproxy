@@ -3,11 +3,11 @@
             [clj-nproxy.cli :as cli])
   (:import [java.time Instant ZoneId LocalDateTime]
            [java.time.format DateTimeFormatter]
-           [java.awt BorderLayout FlowLayout]
+           [java.awt BorderLayout FlowLayout Font]
            [java.awt.event ActionListener WindowListener]
            [javax.swing
             JFrame JPanel JLabel JButton JComboBox
-            JScrollPane JTable RowFilter Timer SwingUtilities]
+            JScrollPane JTable RowFilter BorderFactory Timer SwingUtilities]
            [javax.swing.table AbstractTableModel TableRowSorter]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -35,13 +35,10 @@
    (update-stat stat log nil))
   ([stat log opts]
    (let [{:keys [max-logs]} opts
-         {:keys [level event]} log
+         {:keys [event]} log
          host (when (= event :pipe) (get-in log [:req :host]))
          tag (when (= event :pipe) (get-in log [:server :tag]))
-         stat (-> stat
-                  (update :logs add-to-history log max-logs)
-                  (update-in [:levels level] (fnil inc 0))
-                  (update-in [:events event] (fnil inc 0)))]
+         stat (update stat :logs add-to-history log max-logs)]
      (cond-> stat
        (some? host) (update-in [:hosts host] (fnil inc 0))
        (some? tag) (update-in [:tags tag] (fnil inc 0))))))
@@ -60,6 +57,40 @@
    :events {:connect 1 :pipe 1 :pipe-error 1}
    :hosts  {"foo.bar" 1}
    :tags   {"proxy" 1}})
+
+(defn format-tags
+  "Format tags string."
+  [tags]
+  (->> tags
+       (sort-by (comp - val))
+       (map
+        (fn [[k v]]
+          (format "%s:%d" (name k) v)
+          (str (name k) ":" v)))
+       (str/join " ")))
+
+^:rct/test
+(comment
+  (format-tags {:direct 11 :proxy 5}) ; => "direct:11 proxy:5"
+  )
+
+(defn format-hosts
+  "Fomrat hosts string."
+  ([hosts]
+   (format-hosts hosts 5))
+  ([hosts max-hosts]
+   (->> hosts
+        (sort-by (comp - val))
+        (take max-hosts)
+        (map
+         (fn [[k v]]
+           (format "%s(%d)" k v)))
+        (str/join " "))))
+
+^:rct/test
+(comment
+  (format-hosts {"foo.bar1" 3 "foo.bar2" 2 "foo.bar3" 4} 2) ; => "foo.bar3(4) foo.bar1(3)"
+  )
 
 (def col->data-type [:timestamp :level :event :host :detail])
 (def col->data-label ["Time" "Level" "Event" "Host" "Detail"])
@@ -175,8 +206,21 @@
         _ (.addActionListener event-combo
                               (reify ActionListener
                                 (actionPerformed [_ _] (update-filter-fn))))
+        tags-label (doto (JLabel. "Tags: ")
+                     (.setFont (Font. Font/MONOSPACED Font/PLAIN 12)))
+        hosts-label (doto (JLabel. "Hosts: ")
+                      (.setFont (Font. Font/MONOSPACED Font/PLAIN 12)))
+        stats-panel (doto (JPanel. (BorderLayout.))
+                      (.setBorder (BorderFactory/createEmptyBorder 5 8 5 8))
+                      (.add tags-label BorderLayout/NORTH)
+                      (.add hosts-label BorderLayout/SOUTH))
         north-panel (doto (JPanel. (BorderLayout.))
+                      (.add stats-panel (BorderLayout/NORTH))
                       (.add filter-panel (BorderLayout/SOUTH)))
+        update-data-fn (fn []
+                         (.fireTableDataChanged model)
+                         (.setText tags-label (str "Tags: " (format-tags (:tags @astat))))
+                         (.setText hosts-label (str "Hosts: " (format-hosts (:hosts @astat)))))
         vstat (volatile! @astat)
         timer (Timer. 500
                       (reify ActionListener
@@ -184,7 +228,7 @@
                           (let [stat @astat]
                             (when-not (= stat @vstat)
                               (vreset! vstat stat)
-                              (.fireTableDataChanged model))))))]
+                              (update-data-fn))))))]
     (doto frame
       (.addWindowListener
        (reify WindowListener
