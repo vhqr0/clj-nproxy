@@ -9,6 +9,9 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
+;; ugly hack: allow rewrite host header
+(System/setProperty "jdk.httpclient.allowRestrictedHeaders" "host")
+
 (defn ch->listener
   "Convert channel to websocket listener."
   ^WebSocket$Listener [ch]

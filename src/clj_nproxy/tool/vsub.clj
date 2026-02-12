@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [list])
   (:require [clojure.string :as str]
             [clojure.data.json :as json]
-            [clj-nproxy.tool.core :as core])
+            [clj-nproxy.config :as config])
   (:import [java.util Base64]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -42,7 +42,7 @@
 
 (defn read-nodes
   [opts]
-  (let [sub (core/read-text opts "sub.txt")]
+  (let [sub (config/read-text opts "sub.txt")]
     (->> sub sub->nodes)))
 
 (defn print-nodes
@@ -56,9 +56,9 @@
 
 (defn fetch
   [opts]
-  (let [url (str/trim (core/read-text opts "sub.url"))
+  (let [url (str/trim (config/read-text opts "sub.url"))
         sub (str/trim (slurp url))]
-    (core/write-content opts "sub.txt" sub)
+    (config/write opts "sub.txt" sub)
     (list opts)))
 
 (defn select
@@ -73,4 +73,4 @@
                                  (when (contains? select i)
                                    (node->outbound-opts node))))))
           outbound {:type :rand-dispatch :outbounds outbounds}]
-      (core/write-content opts "sub.edn" outbound))))
+      (config/write opts "sub.edn" outbound))))

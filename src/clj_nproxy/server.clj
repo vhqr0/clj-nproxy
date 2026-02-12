@@ -125,6 +125,25 @@
             _ (.fork scope ^Runnable #(st/copy (:input-stream server) (:output-stream client)))]
         (.join scope)))))
 
+(defn ->log
+  "Construct log data."
+  [level event data]
+  (merge {:timestamp (System/currentTimeMillis) :level level :event event} data))
+
+(defn ->info-log
+  "Construct info log."
+  [event data]
+  (->log :info event data))
+
+(defn ->error-log
+  "Construct error log."
+  [event error pr-error? data]
+  (->log :error event
+         (merge data
+                {:error-str (str error)}
+                (when pr-error?
+                  {:error-pr-str (pr-str error)}))))
+
 (defn start-server
   "Start proxy server."
   [opts]
@@ -134,30 +153,23 @@
     (mk-inbound
      inbound
      (fn [{:keys [host port] cinfo :peer :as client}]
-       (let [req {:id (str (random-uuid)) :host host :port port}
-             cinfo (assoc cinfo :req req)]
-         (log-fn {:timestamp (System/currentTimeMillis) :level :info :event :connect :client cinfo})
+       (let [req {:id (str (random-uuid)) :host host :port port}]
+         (log-fn (->info-log :connect {:req req :client cinfo}))
          (try
            (mk-outbound
             outbound host port
             (fn [{sinfo :peer :as server}]
-              (log-fn {:timestamp (System/currentTimeMillis) :level :info :event :pipe :client cinfo :server sinfo})
+              (log-fn (->info-log :pile {:req req :client cinfo :server sinfo}))
               (try
                 (pipe client server)
-                (catch Exception e
-                  (log-fn (merge
-                           {:timestamp (System/currentTimeMillis) :level :error :event :pipe-error :client cinfo :server sinfo :error-str (str e)}
-                           (when pr-error? {:error-pr-str (pr-str e)})))))))
-           (catch Exception e
-             (log-fn (merge
-                      {:timestamp (System/currentTimeMillis) :level :error :event :connect-error :client cinfo :error-str (str e)}
-                      (when pr-error? {:error-pr-str (pr-str e)}))))))))))
+                (catch Exception error
+                  (log-fn (->error-log :pipe-error error pr-error? {:req req :client cinfo :server sinfo}))))))
+           (catch Exception error
+             (log-fn (->error-log :connect-error error pr-error? {:req req :client cinfo})))))))
+    (log-fn (->info-log :start {}))))
 
 (defn edn->server-opts
   [opts]
   (-> opts
       (update :inbound edn->inbound-opts)
       (update :outbound edn->outbound-opts)))
-
-(comment
-  (start-server {}))

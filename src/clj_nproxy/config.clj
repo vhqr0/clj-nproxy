@@ -1,4 +1,5 @@
-(ns clj-nproxy.tool.core
+(ns clj-nproxy.config
+  (:refer-clojure :exclude [write])
   (:require [clojure.edn :as edn])
   (:import [java.io File]))
 
@@ -19,6 +20,6 @@
    {:readers {'file #(read-edn opts %)}}
    (read-text opts name)))
 
-(defn write-content
+(defn write
   [opts name content]
   (spit (config-file opts name) content))

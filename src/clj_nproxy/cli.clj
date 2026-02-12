@@ -1,9 +1,6 @@
-(ns clj-nproxy.tool
+(ns clj-nproxy.cli
   (:require [clj-nproxy.server :as server]
-            [clj-nproxy.tool.core :as core]))
-
-;; ugly hack: allow rewrite host header
-(System/setProperty "jdk.httpclient.allowRestrictedHeaders" "host")
+            [clj-nproxy.config :as config]))
 
 (def default-server-opts
   {:inbound {:type :proxy
@@ -11,14 +8,19 @@
              :proxy-opts {:type :socks5}}
    :outbound {:type :direct}})
 
-(defn start-server
-  "Start proxy server."
+(defn start-server-from-config
+  "Start proxy server from config."
   [{:keys [config-name] :or {config-name "config.edn"} :as opts}]
-  (let [server-opts (merge default-server-opts (core/read-edn opts config-name))]
+  (let [server-opts (merge default-server-opts (config/read-edn opts config-name))]
     (run! require (:plugins server-opts))
-    (add-tap prn)
     (server/start-server
      (merge
       (server/edn->server-opts server-opts)
-      {:log-fn tap>})))
+      {:log-fn tap>}))))
+
+(defn start-server
+  "Start proxy server."
+  [opts]
+  (add-tap prn)
+  (start-server-from-config opts)
   @(promise))

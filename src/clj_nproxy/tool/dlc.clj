@@ -1,6 +1,6 @@
 (ns clj-nproxy.tool.dlc
   (:require [clojure.string :as str]
-            [clj-nproxy.tool.core :as core])
+            [clj-nproxy.config :as config])
   (:import [java.io File]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -23,7 +23,7 @@
 (def tag-map
   {"ads" :block "cn" :direct "!cn" :proxy})
 
-(defn read-tags
+(defn read-data-tags
   "Return seq of tags."
   [opts name default-tag]
   (->> (slurp (data-file opts name))
@@ -39,7 +39,7 @@
                                           tag (get tag-map tag default-tag)]
                                       [[domain tag]])
                   "include" (let [name (get matches 3)]
-                              (read-tags opts name default-tag))
+                              (read-data-tags opts name default-tag))
                   ;; we don't support regexp yet
                   "regexp" nil
                   (prn {:type :parse-error :line line}))
@@ -47,8 +47,7 @@
 
 (defn gen
   [opts]
-  (core/write-content
-   opts "tags.edn"
-   (into {} (concat
-             (read-tags opts "cn" :direct)
-             (read-tags opts "geolocation-!cn" :proxy)))))
+  (let [tags (into {} (concat
+                       (read-data-tags opts "cn" :direct)
+                       (read-data-tags opts "geolocation-!cn" :proxy)))]
+    (config/write opts "tags.edn" tags)))
