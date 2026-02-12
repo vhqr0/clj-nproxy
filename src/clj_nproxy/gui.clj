@@ -6,7 +6,7 @@
            [java.awt BorderLayout FlowLayout Font]
            [java.awt.event ActionListener WindowListener]
            [javax.swing
-            JFrame JPanel JLabel JButton JComboBox
+            JFrame JPanel JLabel JButton JComboBox JTextField
             JScrollPane JTable RowFilter BorderFactory Timer SwingUtilities]
            [javax.swing.table AbstractTableModel TableRowSorter]))
 
@@ -171,6 +171,7 @@
         scroll-pane (JScrollPane. table)
         level-combo (JComboBox. (object-array ["ALL" "INFO" "ERROR"]))
         event-combo (JComboBox. (object-array ["ALL" "CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"]))
+        host-input (JTextField. 10)
         update-filter-fn (fn []
                            (let [level-filter (let [level (.getSelectedItem level-combo)]
                                                 (when-not (= level "ALL")
@@ -178,18 +179,18 @@
                                  event-filter (let [event (.getSelectedItem event-combo)]
                                                 (when-not (= event "ALL")
                                                   (RowFilter/regexFilter (str "^" event "$") (int-array [2]))))
-                                 filters (filter some? [level-filter event-filter])
+                                 host-filter (let [host (.getText host-input)]
+                                               (when-not (str/blank? host)
+                                                 (RowFilter/regexFilter host (int-array [3]))))
+                                 filters (filter some? [level-filter event-filter host-filter])
                                  ^RowFilter filter (when (seq filters)
                                                      (if (= 1 (count filters))
                                                        (first filters)
                                                        (RowFilter/andFilter filters)))]
                              (.setRowFilter sorter filter)))
-        _ (.addActionListener level-combo
-                              (reify ActionListener
-                                (actionPerformed [_ _] (update-filter-fn))))
-        _ (.addActionListener event-combo
-                              (reify ActionListener
-                                (actionPerformed [_ _] (update-filter-fn))))
+        _ (.addActionListener level-combo (reify ActionListener (actionPerformed [_ _] (update-filter-fn))))
+        _ (.addActionListener event-combo (reify ActionListener (actionPerformed [_ _] (update-filter-fn))))
+        _ (.addActionListener host-input (reify ActionListener (actionPerformed [_ _] (update-filter-fn))))
         clear-button (doto (JButton. "Clear")
                        (.addActionListener
                         (reify ActionListener
@@ -200,6 +201,8 @@
                        (.add level-combo)
                        (.add (JLabel. "Event:"))
                        (.add event-combo)
+                       (.add (JLabel. "Host:"))
+                       (.add host-input)
                        (.add clear-button))
         tags-label (doto (JLabel. "Tags: ")
                      (.setFont (Font. Font/MONOSPACED Font/PLAIN 12)))
