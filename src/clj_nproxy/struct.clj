@@ -1,7 +1,7 @@
 (ns clj-nproxy.struct
   (:refer-clojure :exclude [keys])
-  (:import [java.util Arrays]
-           [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
+  (:require [clj-nproxy.bytes :as b])
+  (:import [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
            [java.nio ByteBuffer ByteOrder]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -319,10 +319,7 @@
 (defn wrap-str
   "Wrap bytes struct to string struct."
   [st-bytes]
-  (-> st-bytes
-      (wrap
-       #(String. (bytes %))
-       #(.getBytes (str %)))))
+  (-> st-bytes (wrap b/bytes->str b/str->bytes)))
 
 ^:rct/test
 (comment
@@ -380,7 +377,7 @@
       ([b] (let [b (bytes (if (bytes? b) b (byte-array [b])))]
              (when-not (zero? (alength b))
                (write-fn b))))
-      ([b off len] (let [b (Arrays/copyOfRange (bytes b) (int off) (int (+ off len)))]
+      ([b off len] (let [b (bytes (b/copy-of-range b off (+ off len)))]
                      (when-not (zero? (alength b))
                        (write-fn b)))))
     (close []

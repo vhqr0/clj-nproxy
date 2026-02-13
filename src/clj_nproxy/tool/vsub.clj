@@ -2,25 +2,23 @@
   (:refer-clojure :exclude [list])
   (:require [clojure.string :as str]
             [clojure.data.json :as json]
-            [clj-nproxy.config :as config])
-  (:import [java.util Base64]))
+            [clj-nproxy.bytes :as b]
+            [clj-nproxy.config :as config]))
 
 (set! clojure.core/*warn-on-reflection* true)
-
-(defn base64-decode
-  "Decode base64 string to string."
-  ^String [^String s]
-  (String. (.decode (Base64/getDecoder) s)))
 
 (defn sub->nodes
   "Parse sub text, return seq of vmess nodes."
   [^String sub]
-  (->> (str/split-lines (base64-decode sub))
+  (->> sub
+       b/base64->bytes
+       b/bytes->str
+       str/split-lines
        (keep
         (fn [url]
           (let [url (str/trim url)]
             (when (str/starts-with? url "vmess://")
-              (-> (subs url 8) base64-decode json/read-str)))))))
+              (-> (subs url 8) b/base64->bytes b/bytes->str json/read-str)))))))
 
 (defn node->outbound-opts
   "Convert node to vmess outbound opts."

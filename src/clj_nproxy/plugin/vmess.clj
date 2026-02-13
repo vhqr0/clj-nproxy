@@ -1,47 +1,16 @@
 (ns clj-nproxy.plugin.vmess
   (:require [clojure.string :as str]
+            [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy])
-  (:import [java.util Arrays HexFormat]
-           [java.util.zip CRC32]
+  (:import [java.util.zip CRC32]
            [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
-           [java.security SecureRandom MessageDigest]
+           [java.security MessageDigest]
            [javax.crypto Cipher]
            [javax.crypto.spec SecretKeySpec GCMParameterSpec]
            [org.bouncycastle.crypto.digests SHAKEDigest]))
 
 (set! clojure.core/*warn-on-reflection* true)
-
-;;; bytes
-
-(defn bcat
-  "Concat bytes."
-  ^bytes [& bs]
-  (let [nl (->> bs (reduce #(+ %1 (alength (bytes %2))) 0))
-        nb (byte-array nl)]
-    (loop [i 0 bs bs]
-      (if (empty? bs)
-        nb
-        (let [b (bytes (first bs))
-              l (alength b)]
-          (System/arraycopy b 0 nb i l)
-          (recur (+ i l) (rest bs)))))))
-
-(defn rand-bytes
-  ^bytes [^long n]
-  (let [b (byte-array n)]
-    (-> (SecureRandom.) (.nextBytes b))
-    b))
-
-(defn hex->bytes
-  ^bytes [^String s]
-  (let [hf (HexFormat/of)]
-    (.parseHex hf s)))
-
-(defn bytes->hex
-  ^String [^bytes b]
-  (let [hf (HexFormat/of)]
-    (.formatHex hf b)))
 
 ;;; crypto
 
@@ -71,8 +40,8 @@
 
 ^:rct/test
 (comment
-  (bytes->hex (crc32 (.getBytes "hello"))) ; => "3610a686"
-  (bytes->hex (fnv1a (.getBytes "hello"))) ; => "4f9f2cab"
+  (b/bytes->hex (crc32 (.getBytes "hello"))) ; => "3610a686"
+  (b/bytes->hex (fnv1a (.getBytes "hello"))) ; => "4f9f2cab"
   )
 
 ;;;; digest
@@ -88,8 +57,8 @@
 
 ^:rct/test
 (comment
-  (bytes->hex (md5 (.getBytes "hello"))) ; => "5d41402abc4b2a76b9719d911017c592"
-  (bytes->hex (sha256 (.getBytes "hello"))) ; => "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  (b/bytes->hex (md5 (.getBytes "hello"))) ; => "5d41402abc4b2a76b9719d911017c592"
+  (b/bytes->hex (sha256 (.getBytes "hello"))) ; => "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
   )
 
 ;;;; cipher
@@ -173,8 +142,8 @@
   {:pre [(<= (alength key) 64)]}
   (let [ikey (byte-array 64)
         okey (byte-array 64)]
-    (Arrays/fill ikey (unchecked-byte 0x36))
-    (Arrays/fill okey (unchecked-byte 0x5c))
+    (b/fill ikey 0x36)
+    (b/fill okey 0x5c)
     (dotimes [i (alength key)]
       (let [b (aget key i)]
         (aset ikey i (unchecked-byte (bit-xor b 0x36)))
@@ -207,11 +176,11 @@
    :resp-iv      "AEAD Resp Header IV"})
 
 (def vkdf-vds
-  (let [base-vd (->recur-vd (.getBytes ^String vkdf-label))]
+  (let [base-vd (->recur-vd (b/str->bytes vkdf-label))]
     (->> vkdf-labels
          (map
           (fn [[type label]]
-            (let [vd (->recur-vd base-vd (.getBytes ^String label))]
+            (let [vd (->recur-vd base-vd (b/str->bytes label))]
               [type vd])))
          (into {}))))
 
@@ -220,7 +189,7 @@
   ^bytes [type len b & [aads]]
   (let [base-vd (vd-clone (get vkdf-vds type))
         vd (reduce ->recur-vd base-vd aads)]
-    (Arrays/copyOf (vd-digest! vd b) (int len))))
+    (b/copy-of (vd-digest! vd b) len)))
 
 ;;;; req
 
@@ -230,22 +199,22 @@
 (defn ->id
   "Construct expanded vmess id from uuid."
   [uuid]
-  (let [cmd-key (md5 (bcat
-                      (hex->bytes (str/replace uuid "-" ""))
-                      (.getBytes ^String vmess-uuid)))
+  (let [cmd-key (md5 (b/cat
+                      (b/hex->bytes (str/replace uuid "-" ""))
+                      (b/str->bytes vmess-uuid)))
         auth-key (vkdf :aid 16 cmd-key)]
     {:uuid uuid :cmd-key cmd-key :auth-key auth-key}))
 
 (defn ->params
   "Generate params."
   []
-  (let [nonce (rand-bytes 8)
-        key (rand-bytes 16)
-        iv (rand-bytes 16)
-        rkey (Arrays/copyOf (bytes (sha256 key)) 16)
-        riv (Arrays/copyOf (bytes (sha256 iv)) 16)
+  (let [nonce (b/rand 8)
+        key (b/rand 16)
+        iv (b/rand 16)
+        rkey (b/copy-of (sha256 key) 16)
+        riv (b/copy-of (sha256 iv) 16)
         verify (rand-int 256)
-        padding (rand-bytes (rand-int 16))]
+        padding (b/rand (rand-int 16))]
     {:nonce nonce :key key :iv iv :rkey rkey :riv riv
      :verify verify :padding padding}))
 
@@ -254,9 +223,9 @@
   [id]
   (let [{:keys [auth-key]} id
         ts (long (/ (System/currentTimeMillis) 1000))
-        nonce (rand-bytes 4)
-        ts+nonce (bcat (st/pack st/st-long-be ts) nonce)
-        ts+nonce+crc32 (bcat ts+nonce (crc32 ts+nonce))]
+        nonce (b/rand 4)
+        ts+nonce (b/cat (st/pack st/st-long-be ts) nonce)
+        ts+nonce+crc32 (b/cat ts+nonce (crc32 ts+nonce))]
     (aes128-ecb-encrypt auth-key ts+nonce+crc32)))
 
 (def st-req
@@ -299,8 +268,8 @@
         {:keys [nonce padding]} params
         eaid (->eaid id)
         req (->req params host port)
-        req+padding (bcat req padding)
-        req+padding+fnv1a (bcat req+padding (fnv1a req+padding))
+        req+padding (b/cat req padding)
+        req+padding+fnv1a (b/cat req+padding (fnv1a req+padding))
         elen (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
                    b (st/pack st/st-ushort-be (alength req+padding+fnv1a))]
@@ -308,7 +277,7 @@
         ereq (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
                (aes128-gcm-encrypt key iv req+padding+fnv1a eaid))]
-    (bcat eaid elen nonce ereq)))
+    (b/cat eaid elen nonce ereq)))
 
 ;;;; resp
 
@@ -347,11 +316,11 @@
 (defn iv->read-iv-fn
   [iv]
   (let [vctr (volatile! 0)
-        iv (Arrays/copyOfRange (bytes iv) 2 12)]
+        iv (b/copy-of-range iv 2 12)]
     (fn []
       (let [i @vctr]
         (vswap! vctr inc)
-        (bcat (st/pack st/st-ushort-be i) iv)))))
+        (b/cat (st/pack st/st-ushort-be i) iv)))))
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
@@ -383,7 +352,7 @@
                                iv (read-iv-fn)
                                edata (aes128-gcm-encrypt key iv data)
                                elen (st/pack st/st-ushort-be (bit-xor mask (alength edata)))]
-                           (.write os (bcat elen edata))
+                           (.write os (b/cat elen edata))
                            (.flush os)))
         write-fn (fn [data]
                    (let [data (bytes data)]
