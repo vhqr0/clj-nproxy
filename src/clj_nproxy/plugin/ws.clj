@@ -62,7 +62,10 @@
             (st/read-fn->input-stream #(a/<!! ch)))
         os (BufferedOutputStream.
             (st/write-fn->output-stream
-             (fn [b] @(.sendBinary ws (ByteBuffer/wrap (bytes b)) true))
+             (fn [b]
+               (let [b (bytes b)]
+                 (when-not (zero? (alength b))
+                   @(.sendBinary ws (ByteBuffer/wrap b) true))))
              (fn [] @(.sendClose ws WebSocket/NORMAL_CLOSURE ""))))]
     (callback
      {:peer {:ws-uri uri}

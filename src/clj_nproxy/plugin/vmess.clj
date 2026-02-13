@@ -386,8 +386,9 @@
                            (.write os (bcat elen edata))
                            (.flush os)))
         write-fn (fn [data]
-                   (when-not (zero? (alength (bytes data)))
-                     (write-frame-fn data)))
+                   (let [data (bytes data)]
+                     (when-not (zero? (alength data))
+                       (write-frame-fn data))))
         close-fn (fn []
                    (write-frame-fn (byte-array 0))
                    (.close os))]

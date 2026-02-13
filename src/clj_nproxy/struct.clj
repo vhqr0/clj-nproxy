@@ -377,8 +377,12 @@
   ^OutputStream [write-fn & [close-fn]]
   (proxy [OutputStream] []
     (write
-      ([b] (write-fn (if (bytes? b) b (byte-array [b]))))
-      ([b off len] (write-fn (Arrays/copyOfRange (bytes b) (int off) (int (+ off len))))))
+      ([b] (let [b (bytes (if (bytes? b) b (byte-array [b])))]
+             (when-not (zero? (alength b))
+               (write-fn b))))
+      ([b off len] (let [b (Arrays/copyOfRange (bytes b) (int off) (int (+ off len)))]
+                     (when-not (zero? (alength b))
+                       (write-fn b)))))
     (close []
       (when (some? close-fn)
         (close-fn)))))
