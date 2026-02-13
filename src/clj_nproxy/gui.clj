@@ -270,7 +270,7 @@
           (vreset! vstate state)
           (refresh-data-fn))))))
 
-(defn mk-logs-gui
+(defn mk-gui
   "Make gui."
   ^JFrame [alogs]
   (let [[^Component panel {:keys [refresh-logs-fn]}] (mk-logs-panel alogs)
@@ -285,7 +285,7 @@
 (defn start-gui
   "Start gui."
   [alogs]
-  (SwingUtilities/invokeLater #(mk-logs-gui alogs)))
+  (SwingUtilities/invokeLater #(mk-gui alogs)))
 
 ;;; tool
 
