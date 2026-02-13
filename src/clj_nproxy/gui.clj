@@ -15,43 +15,24 @@
 (defn add-to-history
   "Add item to history."
   [history item max-items]
-  (vec (cond->> (cons item history)
-         (some? max-items) (take max-items))))
+  (vec (take max-items (cons item history))))
 
 ^:rct/test
 (comment
   (add-to-history nil 1 2) ; => [1]
   (add-to-history [1] 2 2) ; => [2 1]
   (add-to-history [2 1] 3 2) ; => [3 2]
-  (add-to-history [2 1] 3 nil) ; => [3 2 1]
   )
 
-(defn update-stat
-  "Update stat when receive new event."
-  ([stat log]
-   (update-stat stat log nil))
-  ([stat log opts]
-   (let [{:keys [max-logs] :or {max-logs 1000}} opts
-         {:keys [event]} log
-         host (when (= event :pipe) (get-in log [:req :host]))
-         tag (when (= event :pipe) (get-in log [:server :tag]))
-         stat (update stat :logs add-to-history log max-logs)]
-     (cond-> stat
-       (some? host) (update-in [:hosts host] (fnil inc 0))
-       (some? tag) (update-in [:tags tag] (fnil inc 0))))))
-
-^:rct/test
-(comment
-  (->> [{:level :info :event :connect}
-        {:level :info :event :pipe :req {:host "foo.bar"} :server {:tag "proxy"}}
-        {:level :error :event :pipe-error}]
-       (reduce update-stat nil))
-  ;; =>
-  {:logs   [{:level :error :event :pipe-error}
-            {:level :info :event :pipe :req {:host "foo.bar"} :server {:tag "proxy"}}
-            {:level :info :event :connect}]
-   :hosts  {"foo.bar" 1}
-   :tags   {"proxy" 1}})
+(defn get-tags
+  "Extract tags from logs."
+  [logs]
+  (->> logs
+       (keep
+        (fn [log]
+          (when (= :pipe (:event log))
+            (get-in log [:server :tag]))))
+       frequencies))
 
 (defn format-tags
   "Format tags string."
@@ -68,6 +49,16 @@
 (comment
   (format-tags {:direct 11 :proxy 5}) ; => "direct:11 proxy:5"
   )
+
+(defn get-hosts
+  "Extract hosts from logs."
+  [logs]
+  (->> logs
+       (keep
+        (fn [log]
+          (when (= :pipe (:event log))
+            (get-in log [:req :host]))))
+       frequencies))
 
 (defn format-hosts
   "Fomrat hosts string."
@@ -149,20 +140,20 @@
 (defmethod get-detail :pipe-error [log]
   (some-> log :error-str))
 
-(defn astat->table-model
-  "Convert atom stat to table model."
-  ^AbstractTableModel [astat]
+(defn alogs->table-model
+  "Convert atom logs to table model."
+  ^AbstractTableModel [alogs]
   (proxy [AbstractTableModel] []
-    (getRowCount [] (count (:logs @astat)))
+    (getRowCount [] (count @alogs))
     (getColumnCount [] (count col->data-type))
     (getColumnName [col] (col->data-label col))
-    (getValueAt [row col] (str (get-display-data (:logs @astat) row col)))))
+    (getValueAt [row col] (str (get-display-data @alogs row col)))))
 
-(defn astat->gui
-  "Convert atom stat to gui."
-  ^JFrame [astat]
+(defn alogs->gui
+  "Convert atom logs to gui."
+  ^JFrame [alogs]
   (let [frame (JFrame. "nproxy")
-        model (astat->table-model astat)
+        model (alogs->table-model alogs)
         sorter (TableRowSorter. model)
         table (doto (JTable. model)
                 (.setAutoResizeMode JTable/AUTO_RESIZE_LAST_COLUMN)
@@ -195,7 +186,7 @@
                        (.addActionListener
                         (reify ActionListener
                           (actionPerformed [_ _]
-                            (reset! astat nil)))))
+                            (reset! alogs nil)))))
         filter-panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
                        (.add (JLabel. "Level:"))
                        (.add level-combo)
@@ -217,15 +208,15 @@
                       (.add filter-panel (BorderLayout/SOUTH)))
         update-data-fn (fn []
                          (.fireTableDataChanged model)
-                         (.setText tags-label (str "Tags: " (format-tags (:tags @astat))))
-                         (.setText hosts-label (str "Hosts: " (format-hosts (:hosts @astat)))))
-        vstat (volatile! @astat)
+                         (.setText tags-label (str "Tags: " (format-tags (get-tags @alogs))))
+                         (.setText hosts-label (str "Hosts: " (format-hosts (get-hosts @alogs)))))
+        vlogs (volatile! @alogs)
         timer (Timer. 500
                       (reify ActionListener
                         (actionPerformed [_ _]
-                          (let [stat @astat]
-                            (when-not (= stat @vstat)
-                              (vreset! vstat stat)
+                          (let [logs @alogs]
+                            (when-not (= logs @vlogs)
+                              (vreset! vlogs logs)
                               (update-data-fn))))))]
     (doto frame
       (.addWindowListener
@@ -245,8 +236,9 @@
 (defn start-server
   "Start proxy server with gui."
   [opts]
-  (let [astat (atom {})]
-    (add-tap #(swap! astat update-stat % opts))
+  (let [{:keys [max-logs] :or {max-logs 1000}} opts
+        alogs (atom {})]
+    (add-tap #(swap! alogs add-to-history % max-logs))
     (cli/start-server-from-config opts)
-    (SwingUtilities/invokeLater #(astat->gui astat))
+    (SwingUtilities/invokeLater #(alogs->gui alogs))
     @(promise)))
