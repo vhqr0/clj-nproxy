@@ -3,7 +3,7 @@
             [clj-nproxy.cli :as cli])
   (:import [java.time Instant ZoneId LocalDateTime]
            [java.time.format DateTimeFormatter]
-           [java.awt BorderLayout FlowLayout Font]
+           [java.awt Component Window BorderLayout FlowLayout Font]
            [java.awt.event ActionListener WindowListener]
            [javax.swing
             JFrame JPanel JLabel JButton JComboBox JTextField
@@ -12,71 +12,31 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
-(defn add-to-history
-  "Add item to history."
-  [history item max-items]
-  (vec (take max-items (cons item history))))
+;;; utils
 
-^:rct/test
-(comment
-  (add-to-history nil 1 2) ; => [1]
-  (add-to-history [1] 2 2) ; => [2 1]
-  (add-to-history [2 1] 3 2) ; => [3 2]
-  )
+(defn mk-listener
+  "Construct listener."
+  ^ActionListener [action-fn]
+  (reify ActionListener
+    (actionPerformed [_ _] (action-fn))))
 
-(defn get-tags
-  "Extract tags from logs."
-  [logs]
-  (->> logs
-       (keep
-        (fn [log]
-          (when (= :pipe (:event log))
-            (get-in log [:server :tag]))))
-       frequencies))
+(defn mk-timer
+  "Construct timer."
+  ^Timer [^long interval action-fn]
+  (Timer. interval (mk-listener action-fn)))
 
-(defn format-tags
-  "Format tags string."
-  [tags]
-  (->> tags
-       (sort-by (comp - val))
-       (map
-        (fn [[k v]]
-          (format "%s:%d" (name k) v)
-          (str (name k) ":" v)))
-       (str/join " ")))
+(defn add-timer
+  "Add timer to window."
+  [^Window window ^Timer timer]
+  (let [listener (reify WindowListener
+                   (windowOpened [_ _] (.start timer))
+                   (windowClosed [_ _] (.stop timer))
+                   (windowClosing [_ _] (.stop timer))
+                   (windowActivated [_ _])
+                   (windowDeactivated [_ _]))]
+    (.addWindowListener window listener)))
 
-^:rct/test
-(comment
-  (format-tags {:direct 11 :proxy 5}) ; => "direct:11 proxy:5"
-  )
-
-(defn get-hosts
-  "Extract hosts from logs."
-  [logs]
-  (->> logs
-       (keep
-        (fn [log]
-          (when (= :pipe (:event log))
-            (get-in log [:req :host]))))
-       frequencies))
-
-(defn format-hosts
-  "Fomrat hosts string."
-  ([hosts]
-   (format-hosts hosts 5))
-  ([hosts max-hosts]
-   (->> hosts
-        (sort-by (comp - val))
-        (take max-hosts)
-        (map
-         (fn [[k v]]
-           (format "%s(%d)" k v)))
-        (str/join " "))))
-
-^:rct/test
-(comment
-  (format-hosts {"foo.bar1" 3 "foo.bar2" 2 "foo.bar3" 4} 2) ; => "foo.bar3(4) foo.bar1(3)"
-  )
+;;; table
 
 (def col->data-type [:timestamp :level :event :host :detail])
 (def col->data-label ["Time" "Level" "Event" "Host" "Detail"])
@@ -140,8 +100,8 @@
 (defmethod get-detail :pipe-error [log]
   (some-> log :error-str))
 
-(defn alogs->table-model
-  "Convert atom logs to table model."
+(defn mk-logs-table-model
+  "Make table model."
   ^AbstractTableModel [alogs]
   (proxy [AbstractTableModel] []
     (getRowCount [] (count @alogs))
@@ -149,28 +109,37 @@
     (getColumnName [col] (col->data-label col))
     (getValueAt [row col] (str (get-display-data @alogs row col)))))
 
-(defn alogs->gui
-  "Convert atom logs to gui."
-  ^JFrame [alogs]
-  (let [frame (JFrame. "nproxy")
-        model (alogs->table-model alogs)
+(defn mk-logs-table
+  "Make table."
+  [alogs]
+  (let [model (mk-logs-table-model alogs)
         sorter (TableRowSorter. model)
-        table (doto (JTable. model)
-                (.setAutoResizeMode JTable/AUTO_RESIZE_LAST_COLUMN)
-                (.setFillsViewportHeight true)
-                (.setRowSorter sorter))
-        scroll-pane (JScrollPane. table)
-        level-combo (JComboBox. (object-array ["ALL" "INFO" "ERROR"]))
-        event-combo (JComboBox. (object-array ["ALL" "CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"]))
-        host-input (JTextField. 10)
+        refresh-table-fn #(.fireTableDataChanged model)
+        set-filter-fn #(.setRowFilter sorter %)
+        actions {:refresh-table-fn refresh-table-fn
+                 :set-filter-fn set-filter-fn}
+        table (JScrollPane.
+               (doto (JTable. model)
+                 (.setAutoResizeMode JTable/AUTO_RESIZE_LAST_COLUMN)
+                 (.setFillsViewportHeight true)
+                 (.setRowSorter sorter)))]
+    [table actions]))
+
+(defn mk-logs-filter-panel
+  "Make filter panel."
+  [set-filter-fn clear-fn]
+  (let [level-filter (JComboBox. (object-array ["ALL" "INFO" "ERROR"]))
+        event-filter (JComboBox. (object-array ["ALL" "CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"]))
+        host-filter (JTextField. 10)
+        clear-button (JButton. "Clear")
         update-filter-fn (fn []
-                           (let [level-filter (let [level (.getSelectedItem level-combo)]
+                           (let [level-filter (let [level (.getSelectedItem level-filter)]
                                                 (when-not (= level "ALL")
                                                   (RowFilter/regexFilter (str "^" level "$") (int-array [1]))))
-                                 event-filter (let [event (.getSelectedItem event-combo)]
+                                 event-filter (let [event (.getSelectedItem event-filter)]
                                                 (when-not (= event "ALL")
                                                   (RowFilter/regexFilter (str "^" event "$") (int-array [2]))))
-                                 host-filter (let [host (.getText host-input)]
+                                 host-filter (let [host (.getText host-filter)]
                                                (when-not (str/blank? host)
                                                  (RowFilter/regexFilter host (int-array [3]))))
                                  filters (filter some? [level-filter event-filter host-filter])
@@ -178,60 +147,131 @@
                                                      (if (= 1 (count filters))
                                                        (first filters)
                                                        (RowFilter/andFilter filters)))]
-                             (.setRowFilter sorter filter)))
-        _ (.addActionListener level-combo (reify ActionListener (actionPerformed [_ _] (update-filter-fn))))
-        _ (.addActionListener event-combo (reify ActionListener (actionPerformed [_ _] (update-filter-fn))))
-        _ (.addActionListener host-input (reify ActionListener (actionPerformed [_ _] (update-filter-fn))))
-        clear-button (doto (JButton. "Clear")
-                       (.addActionListener
-                        (reify ActionListener
-                          (actionPerformed [_ _]
-                            (reset! alogs nil)))))
-        filter-panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
-                       (.add (JLabel. "Level:"))
-                       (.add level-combo)
-                       (.add (JLabel. "Event:"))
-                       (.add event-combo)
-                       (.add (JLabel. "Host:"))
-                       (.add host-input)
-                       (.add clear-button))
-        tags-label (doto (JLabel. "Tags: ")
+                             (set-filter-fn filter)))
+        actions {:update-filter-fn update-filter-fn}
+        panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
+                (.add (JLabel. "Level:"))
+                (.add level-filter)
+                (.add (JLabel. "Event:"))
+                (.add event-filter)
+                (.add (JLabel. "Host:"))
+                (.add host-filter)
+                (.add clear-button))]
+    (.addActionListener level-filter (mk-listener update-filter-fn))
+    (.addActionListener event-filter (mk-listener update-filter-fn))
+    (.addActionListener host-filter (mk-listener update-filter-fn))
+    (.addActionListener clear-button (mk-listener clear-fn))
+    [panel actions]))
+
+;;; stats
+
+(defn format-freq
+  "Format freq string."
+  [top freq]
+  (->> freq
+       (sort-by (comp - val))
+       (take top)
+       (map
+        (fn [[k v]]
+          (format "%s(%d)" k v)))
+       (str/join " ")))
+
+^:rct/test
+(comment
+  (format-freq 2 {"foo.bar1" 3 "foo.bar2" 2 "foo.bar3" 4}) ; => "foo.bar3(4) foo.bar1(3)"
+  )
+
+(defn get-tags-stats
+  "Get tags stats string."
+  [logs]
+  (->> logs
+       (keep
+        (fn [log]
+          (when (= :pipe (:event log))
+            (some-> log (get-in [:server :tag]) name))))
+       frequencies
+       (format-freq 5)))
+
+(defn get-hosts-stats
+  "Get hosts stats string."
+  [logs]
+  (->> logs
+       (keep
+        (fn [log]
+          (when (= :pipe (:event log))
+            (some-> log (get-in [:req :host])))))
+       frequencies
+       (format-freq 5)))
+
+(defn mk-logs-stats-panel
+  "Make stats panel."
+  [alogs]
+  (let [tags-label (doto (JLabel. "Tags: ")
                      (.setFont (Font. Font/MONOSPACED Font/PLAIN 12)))
         hosts-label (doto (JLabel. "Hosts: ")
                       (.setFont (Font. Font/MONOSPACED Font/PLAIN 12)))
-        stats-panel (doto (JPanel. (BorderLayout.))
-                      (.setBorder (BorderFactory/createEmptyBorder 5 8 5 8))
-                      (.add tags-label BorderLayout/NORTH)
-                      (.add hosts-label BorderLayout/SOUTH))
-        north-panel (doto (JPanel. (BorderLayout.))
-                      (.add stats-panel (BorderLayout/NORTH))
-                      (.add filter-panel (BorderLayout/SOUTH)))
-        update-data-fn (fn []
-                         (.fireTableDataChanged model)
-                         (.setText tags-label (str "Tags: " (format-tags (get-tags @alogs))))
-                         (.setText hosts-label (str "Hosts: " (format-hosts (get-hosts @alogs)))))
-        vlogs (volatile! @alogs)
-        timer (Timer. 500
-                      (reify ActionListener
-                        (actionPerformed [_ _]
-                          (let [logs @alogs]
-                            (when-not (= logs @vlogs)
-                              (vreset! vlogs logs)
-                              (update-data-fn))))))]
-    (doto frame
-      (.addWindowListener
-       (reify WindowListener
-         (windowOpened [_ _] (.start timer))
-         (windowClosed [_ _] (.stop timer))
-         (windowClosing [_ _] (.stop timer))
-         (windowActivated [_ _])
-         (windowDeactivated [_ _])))
+        refresh-stats-fn (fn []
+                           (let [logs @alogs]
+                             (.setText tags-label (str "Tags: " (get-tags-stats logs)))
+                             (.setText hosts-label (str "Hosts: " (get-hosts-stats logs)))))
+        actions {:refresh-stats-fn refresh-stats-fn}
+        panel (doto (JPanel. (BorderLayout.))
+                (.setBorder (BorderFactory/createEmptyBorder 5 8 5 8))
+                (.add tags-label BorderLayout/NORTH)
+                (.add hosts-label BorderLayout/SOUTH))]
+    [panel actions]))
+
+;;; gui
+
+(defn mk-refresh-fn
+  "Make refresh fn.
+  When state changed, call refresh data fn."
+  [astate refresh-data-fn]
+  (let [vstate (volatile! nil)]
+    (fn []
+      (let [state @astate]
+        (when-not (= state @vstate)
+          (vreset! vstate state)
+          (refresh-data-fn))))))
+
+(defn mk-logs-gui
+  "Make gui."
+  ^JFrame [alogs]
+  (let [clear-fn #(reset! alogs nil)
+        [^Component table {:keys [refresh-table-fn set-filter-fn]}] (mk-logs-table alogs)
+        [^Component filter-panel] (mk-logs-filter-panel set-filter-fn clear-fn)
+        [^Component stats-panel {:keys [refresh-stats-fn]}] (mk-logs-stats-panel alogs)
+        refresh-fn (mk-refresh-fn alogs #(do (refresh-table-fn) (refresh-stats-fn)))]
+    (doto (JFrame. "nproxy")
+      (add-timer (mk-timer 500 refresh-fn))
       (.setLayout (BorderLayout.))
-      (.add north-panel BorderLayout/NORTH)
-      (.add scroll-pane BorderLayout/CENTER)
+      (.add (doto (JPanel. (BorderLayout.))
+              (.add stats-panel (BorderLayout/NORTH))
+              (.add filter-panel (BorderLayout/SOUTH)))
+            BorderLayout/NORTH)
+      (.add table BorderLayout/CENTER)
       (.setSize 960 640)
       (.setDefaultCloseOperation JFrame/EXIT_ON_CLOSE)
       (.setVisible true))))
+
+(defn start-gui
+  "Start gui."
+  [alogs]
+  (SwingUtilities/invokeLater #(mk-logs-gui alogs)))
+
+;;; tool
+
+(defn add-to-history
+  "Add item to history."
+  [history item max-items]
+  (vec (take max-items (cons item history))))
+
+^:rct/test
+(comment
+  (add-to-history nil 1 2) ; => [1]
+  (add-to-history [1] 2 2) ; => [2 1]
+  (add-to-history [2 1] 3 2) ; => [3 2]
+  )
 
 (defn start-server
   "Start proxy server with gui."
@@ -240,5 +280,5 @@
         alogs (atom {})]
     (add-tap #(swap! alogs add-to-history % max-logs))
     (cli/start-server-from-config opts)
-    (SwingUtilities/invokeLater #(alogs->gui alogs))
+    (start-gui alogs)
     @(promise)))
