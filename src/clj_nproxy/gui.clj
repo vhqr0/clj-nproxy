@@ -242,6 +242,23 @@
 
 ;;; gui
 
+(defn mk-logs-panel
+  "Make logs panel."
+  [alogs]
+  (let [clear-fn #(reset! alogs nil)
+        [^Component table {:keys [refresh-table-fn set-filter-fn]}] (mk-logs-table alogs)
+        [^Component filter-panel] (mk-logs-filter-panel set-filter-fn clear-fn)
+        [^Component stats-panel {:keys [refresh-stats-fn]}] (mk-logs-stats-panel alogs)
+        refresh-logs-fn #(do (refresh-table-fn) (refresh-stats-fn))
+        actions {:refresh-logs-fn refresh-logs-fn}
+        panel (doto (JPanel. (BorderLayout.))
+                (.add (doto (JPanel. (BorderLayout.))
+                        (.add stats-panel (BorderLayout/NORTH))
+                        (.add filter-panel (BorderLayout/SOUTH)))
+                      BorderLayout/NORTH)
+                (.add table BorderLayout/CENTER))]
+    [panel actions]))
+
 (defn mk-refresh-fn
   "Make refresh fn.
   When state changed, call refresh data fn."
@@ -256,19 +273,11 @@
 (defn mk-logs-gui
   "Make gui."
   ^JFrame [alogs]
-  (let [clear-fn #(reset! alogs nil)
-        [^Component table {:keys [refresh-table-fn set-filter-fn]}] (mk-logs-table alogs)
-        [^Component filter-panel] (mk-logs-filter-panel set-filter-fn clear-fn)
-        [^Component stats-panel {:keys [refresh-stats-fn]}] (mk-logs-stats-panel alogs)
-        refresh-fn (mk-refresh-fn alogs #(do (refresh-table-fn) (refresh-stats-fn)))]
+  (let [[^Component panel {:keys [refresh-logs-fn]}] (mk-logs-panel alogs)
+        refresh-fn (mk-refresh-fn alogs refresh-logs-fn)]
     (doto (JFrame. "nproxy")
       (add-timer (mk-timer 500 refresh-fn))
-      (.setLayout (BorderLayout.))
-      (.add (doto (JPanel. (BorderLayout.))
-              (.add stats-panel (BorderLayout/NORTH))
-              (.add filter-panel (BorderLayout/SOUTH)))
-            BorderLayout/NORTH)
-      (.add table BorderLayout/CENTER)
+      (.add panel)
       (.setSize 960 640)
       (.setDefaultCloseOperation JFrame/EXIT_ON_CLOSE)
       (.setVisible true))))
