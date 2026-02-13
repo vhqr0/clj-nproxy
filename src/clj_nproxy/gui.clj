@@ -125,29 +125,48 @@
                  (.setRowSorter sorter)))]
     [table actions]))
 
+(defn mk-match-filter
+  "Make match filter."
+  [items col]
+  (let [filter (JComboBox. (object-array (cons "ALL" items)))
+        get-filter-fn (fn []
+                        (let [item (.getSelectedItem filter)]
+                          (when-not (= item "ALL")
+                            (RowFilter/regexFilter (str "^" item "$") (int-array [col])))))]
+    [filter {:get-filter-fn get-filter-fn}]))
+
+(defn mk-search-filter
+  "Make search filter."
+  [col]
+  (let [filter (JTextField. 10)
+        get-filter-fn (fn []
+                        (let [text (.getText filter)]
+                          (when-not (str/blank? text)
+                            (RowFilter/regexFilter text (int-array [col])))))]
+    [filter {:get-filter-fn get-filter-fn}]))
+
+(defn merge-filters
+  "Merge filters."
+  [& filters]
+  (let [filters (filter some? filters)]
+    (when (seq filters)
+      (if (= 1 (count filters))
+        (first filters)
+        (RowFilter/andFilter filters)))))
+
 (defn mk-logs-filter-panel
   "Make filter panel."
   [set-filter-fn clear-fn]
-  (let [level-filter (JComboBox. (object-array ["ALL" "INFO" "ERROR"]))
-        event-filter (JComboBox. (object-array ["ALL" "CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"]))
-        host-filter (JTextField. 10)
+  (let [[^JComboBox level-filter {get-level-filter-fn :get-filter-fn}] (mk-match-filter ["INFO" "ERROR"] 1)
+        [^JComboBox event-filter {get-event-filter-fn :get-filter-fn}] (mk-match-filter ["CONNECT" "PIPE" "CONNECT-ERROR" "PIPE-ERROR"] 2)
+        [^JTextField host-filter {get-host-filter-fn :get-filter-fn}] (mk-search-filter 3)
         clear-button (JButton. "Clear")
         update-filter-fn (fn []
-                           (let [level-filter (let [level (.getSelectedItem level-filter)]
-                                                (when-not (= level "ALL")
-                                                  (RowFilter/regexFilter (str "^" level "$") (int-array [1]))))
-                                 event-filter (let [event (.getSelectedItem event-filter)]
-                                                (when-not (= event "ALL")
-                                                  (RowFilter/regexFilter (str "^" event "$") (int-array [2]))))
-                                 host-filter (let [host (.getText host-filter)]
-                                               (when-not (str/blank? host)
-                                                 (RowFilter/regexFilter host (int-array [3]))))
-                                 filters (filter some? [level-filter event-filter host-filter])
-                                 ^RowFilter filter (when (seq filters)
-                                                     (if (= 1 (count filters))
-                                                       (first filters)
-                                                       (RowFilter/andFilter filters)))]
-                             (set-filter-fn filter)))
+                           (set-filter-fn
+                            (merge-filters
+                             (get-level-filter-fn)
+                             (get-event-filter-fn)
+                             (get-host-filter-fn))))
         actions {:update-filter-fn update-filter-fn}
         panel (doto (JPanel. (FlowLayout. FlowLayout/LEFT))
                 (.add (JLabel. "Level:"))
