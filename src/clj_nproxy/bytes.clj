@@ -34,6 +34,11 @@
   [^bytes b i]
   (Arrays/fill b (unchecked-byte i)))
 
+(defn compare
+  "Compare bytes."
+  ^long [^bytes b1 ^bytes b2]
+  (Arrays/compare b1 b2))
+
 (def ^:dynamic ^Random *random* (SecureRandom.))
 
 (defn rand
