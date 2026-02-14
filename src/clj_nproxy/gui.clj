@@ -307,6 +307,7 @@
   [opts]
   (let [{:keys [max-logs] :or {max-logs 1000}} opts
         alogs (atom {})]
+    (add-tap prn)
     (add-tap #(swap! alogs add-to-history % max-logs))
     (cli/start-server-from-config opts)
     (start-gui alogs)
