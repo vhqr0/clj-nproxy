@@ -39,12 +39,8 @@
   {:type :tcp :host add :port (parse-long port) :ssl? (ssl? node)})
 
 (defmethod node->net-opts "ws" [{:strs [add port path host] :or {path "/"} :as node}]
-  (let [schema (if (ssl? node) "wss" "ws")
-        uri (format "%s://%s:%s%s" schema add port path)]
-    (merge
-     {:type :java/ws :uri uri}
-     (when (some? host)
-       {:headers {"host" host}}))))
+  {:type :ws :host add :port (parse-long port) :ssl? (ssl? node)
+   :path path :headers {"host" (or host add)}})
 
 (defn node->outbound-opts
   "Convert node to vmess outbound opts."
