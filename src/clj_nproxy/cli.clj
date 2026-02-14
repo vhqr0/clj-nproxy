@@ -2,7 +2,8 @@
   "Command line interface."
   (:require [clj-nproxy.server :as server]
             [clj-nproxy.config :as config]
-            clj-nproxy.plugin.socks5))
+            clj-nproxy.plugin.socks5
+            clj-nproxy.plugin.http))
 
 (def default-server-opts
   {:inbound {:type :proxy
