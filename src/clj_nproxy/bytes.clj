@@ -19,6 +19,11 @@
           (System/arraycopy b 0 nb i l)
           (recur (+ i l) (rest bs)))))))
 
+(defn copy
+  "Copy bytes."
+  ^bytes [^bytes b]
+  (Arrays/copyOf b (alength b)))
+
 (defn copy-of
   "Copy start part of bytes."
   ^bytes [^bytes b ^long n]

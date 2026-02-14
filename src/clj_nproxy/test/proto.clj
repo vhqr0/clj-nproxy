@@ -34,8 +34,8 @@
         sos (ch->output-stream s->c)]
     (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
       (with-open [scope (StructuredTaskScope/open joiner)]
-        (.fork scope ^Runnable #(client-proc cis cos))
-        (.fork scope ^Runnable #(server-proc sis sos))
+        (.fork scope ^Runnable #(client-proc {:input-stream cis :output-stream cos}))
+        (.fork scope ^Runnable #(server-proc {:input-stream sis :output-stream sos}))
         (.join scope)))))
 
 (defn proxy-handshake
@@ -46,12 +46,12 @@
    (let [vclient (volatile! nil)
          vserver (volatile! nil)]
      (handshake
-      (fn [is os]
+      (fn [{is :input-stream os :output-stream}]
         (proxy/mk-client
          client-opts is os host port
          (fn [server]
            (vreset! vserver (dissoc server :input-stream :output-stream)))))
-      (fn [is os]
+      (fn [{is :input-stream os :output-stream}]
         (proxy/mk-server
          server-opts is os
          (fn [client]
