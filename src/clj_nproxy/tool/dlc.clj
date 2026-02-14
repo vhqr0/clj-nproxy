@@ -11,7 +11,7 @@
 (defn data-file
   "Get data file by name."
   [opts name]
-  (let [{:keys [data-dir] :or {data-dir "domain-list-community/data"}} opts]
+  (let [{:keys [data-dir] :or {data-dir ".nproxy/domain-list-community/data"}} opts]
     (File. (str data-dir "/" name))))
 
 (defn trim-comments
