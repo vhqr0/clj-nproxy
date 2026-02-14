@@ -60,7 +60,7 @@
   (let [ch (a/chan 1024)
         ^WebSocket$Builder builder (mk-websocket-builder client opts)
         ^WebSocket ws @(.buildAsync builder (URI/create uri) (ch->listener ch))]
-    (with-open [closer (st/mk-closeable #(.abort ws))]
+    (with-open [closer (st/mk-closeable #(do (.abort ws) (a/close! ch)))]
       (let [is (BufferedInputStream.
                 (st/read-fn->input-stream #(a/<!! ch)))
             os (BufferedOutputStream.
