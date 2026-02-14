@@ -83,7 +83,7 @@
 ^:rct/test
 (comment
   (String. (st/pack st-http-req {})) ; => "GET / HTTP/1.1\r\n\r\n"
-  (st/unpack st-http-req (.getBytes "GET / HTTP/1.1\r\n\r\n")) ; => {:method "GET", :path "/", :version "HTTP/1.1", :headers {}}
+  (st/unpack st-http-req (.getBytes "GET / HTTP/1.1\r\n\r\n")) ; => {:method "GET" :path "/" :version "HTTP/1.1" :headers {}}
   )
 
 (def hostport-re #"^([^:]+):(.+)$")
