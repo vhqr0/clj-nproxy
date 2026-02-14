@@ -140,19 +140,6 @@
 
 ;;; byte
 
-(defn read-byte
-  "Read byte from stream."
-  ^long [^InputStream is]
-  (let [n (.read is)]
-    (if (= -1 n)
-      (throw (eof-error))
-      (unchecked-byte n))))
-
-(defn write-byte
-  "Write byte to stream."
-  [^OutputStream os ^long i]
-  (.write os (byte i)))
-
 (defn read-ubyte
   "Read unsigned byte from stream."
   ^long [^InputStream is]
@@ -161,20 +148,20 @@
       (throw (eof-error))
       n)))
 
-(defn write-ubyte
-  "Write unsigned byte to stream."
-  [^OutputStream os ^long i]
-  (.write os (unchecked-byte i)))
+(defn read-byte
+  "Read byte from stream."
+  [^InputStream is]
+  (unchecked-byte (read-ubyte is)))
 
 (defrecord ByteStruct []
   Struct
   (read-struct [_ is] (read-byte is))
-  (write-struct [_ os i] (write-byte os i)))
+  (write-struct [_ os i] (.write ^OutputStream os (byte i))))
 
 (defrecord UByteStruct []
   Struct
   (read-struct [_ is] (read-ubyte is))
-  (write-struct [_ os i] (write-ubyte os i)))
+  (write-struct [_ os i] (.write ^OutputStream os (unchecked-byte i))))
 
 (def st-byte (->ByteStruct))
 (def st-ubyte (->UByteStruct))
@@ -202,19 +189,14 @@
             (throw (eof-error))
             (recur (+ n off))))))))
 
-(defn write-bytes
-  "Write n bytes to stream."
-  ([^OutputStream os ^bytes b]
-   (.write os b))
-  ([^OutputStream os ^bytes b ^long len]
-   (if-not (= len (alength b))
-     (throw (data-error))
-     (.write os b))))
-
 (defrecord BytesStruct [^long len]
   Struct
   (read-struct [_ is] (read-bytes is len))
-  (write-struct [_ os b] (write-bytes os b len)))
+  (write-struct [_ os data]
+    (let [data (bytes data)]
+      (if-not (= len (alength data))
+        (throw (data-error))
+        (.write ^OutputStream os data)))))
 
 (defn ->st-bytes
   "Construct bytes struct."
@@ -230,7 +212,7 @@
     (let [data (bytes data)
           len (alength data)]
       (write-struct st-len os len)
-      (write-bytes os data))))
+      (.write ^OutputStream os data))))
 
 (defn ->st-var-bytes
   "Construct var bytes struct."
@@ -255,7 +237,9 @@
 (defrecord DelimitedBytesStruct [^bytes delim]
   Struct
   (read-struct [_ is] (read-delimited-bytes is delim))
-  (write-struct [_ os data] (write-bytes os data) (write-bytes os delim)))
+  (write-struct [_ os data]
+    (.write ^OutputStream os (bytes data))
+    (.write ^OutputStream os delim)))
 
 (defn ->st-delimited-bytes
   "Construct delimited bytes struct."
@@ -293,7 +277,7 @@
 (defrecord NumberStruct [^long len unpack-fn pack-fn]
   Struct
   (read-struct [_ is] (unpack-fn (read-bytes is len)))
-  (write-struct [_ os n] (write-bytes os (pack-fn n))))
+  (write-struct [_ os n] (.write ^OutputStream os (bytes (pack-fn n)))))
 
 (def st-short-be  (->NumberStruct 2 unpack-short-be pack-short-be))
 (def st-int-be    (->NumberStruct 4 unpack-int-be pack-int-be))
@@ -363,7 +347,7 @@
 
 ^:rct/test
 (comment
-  (pack st-http-line "hello") ; => [104 101 108 108 111 13 10]
+  (seq (pack st-http-line "hello")) ; => [104 101 108 108 111 13 10]
   (unpack st-http-line (.getBytes "hello\r\n")) ; => "hello"
   )
 
