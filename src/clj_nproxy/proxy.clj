@@ -1,8 +1,5 @@
 (ns clj-nproxy.proxy
-  "Proxy abstraction."
-  (:require [clj-nproxy.struct :as st])
-  (:import [java.io InputStream OutputStream]
-           [java.net InetAddress]))
+  "Proxy abstraction.")
 
 (set! clojure.core/*warn-on-reflection* true)
 
