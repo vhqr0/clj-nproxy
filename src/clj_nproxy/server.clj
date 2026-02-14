@@ -122,9 +122,9 @@
   [client server]
   (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
     (with-open [scope (StructuredTaskScope/open joiner)]
-      (let [_ (.fork scope ^Runnable #(st/copy (:input-stream client) (:output-stream server)))
-            _ (.fork scope ^Runnable #(st/copy (:input-stream server) (:output-stream client)))]
-        (.join scope)))))
+      (.fork scope ^Runnable #(st/copy (:input-stream client) (:output-stream server)))
+      (.fork scope ^Runnable #(st/copy (:input-stream server) (:output-stream client)))
+      (.join scope))))
 
 (defn ->log
   "Construct log data."
