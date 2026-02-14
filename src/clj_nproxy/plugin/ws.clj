@@ -3,10 +3,11 @@
   (:require [clojure.core.async :as a]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])
-  (:import [java.io BufferedInputStream BufferedOutputStream]
+  (:import [java.util.concurrent ExecutorService Executors]
+           [java.io BufferedInputStream BufferedOutputStream]
            [java.nio ByteBuffer]
            [java.net URI]
-           [java.net.http HttpClient WebSocket WebSocket$Builder WebSocket$Listener]))
+           [java.net.http HttpClient HttpClient$Builder WebSocket WebSocket$Builder WebSocket$Listener]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -74,5 +75,15 @@
           :input-stream is
           :output-stream os})))))
 
+(def ^:dynamic *executor* (delay (Executors/newVirtualThreadPerTaskExecutor)))
+
+(defn mk-http-client
+  "Construct http client."
+  ^HttpClient []
+  (-> (HttpClient/newBuilder)
+      (.proxy HttpClient$Builder/NO_PROXY)
+      (.executor ^ExecutorService (force *executor*))
+      (.build)))
+
 (defmethod net/edn->client-opts :ws [opts]
-  (assoc opts :client (HttpClient/newHttpClient)))
+  (assoc opts :client (mk-http-client)))
