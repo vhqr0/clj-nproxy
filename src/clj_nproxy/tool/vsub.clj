@@ -42,7 +42,7 @@
   (let [schema (if (ssl? node) "wss" "ws")
         uri (format "%s://%s:%s%s" schema add port path)]
     (merge
-     {:type :ws :uri uri}
+     {:type :java/ws :uri uri}
      (when (some? host)
        {:headers {"host" host}}))))
 

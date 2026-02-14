@@ -1,5 +1,5 @@
-(ns clj-nproxy.plugin.ws
-  "Websocket net client impl."
+(ns clj-nproxy.plugin.javaws
+  "Websocket net client impl, java native."
   (:require [clojure.core.async :as a]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])
@@ -56,7 +56,7 @@
     (some? headers) (websocket-builder-apply-headers headers)
     (some? subprotocols) (websocket-builder-apply-subprotocols subprotocols)))
 
-(defmethod net/mk-client :ws [{:keys [client uri] :as opts} callback]
+(defmethod net/mk-client :java/ws [{:keys [client uri] :as opts} callback]
   (let [ch (a/chan 1024)
         ^WebSocket$Builder builder (mk-websocket-builder client opts)
         ^WebSocket ws @(.buildAsync builder (URI/create uri) (ch->listener ch))]
@@ -85,5 +85,5 @@
       (.executor ^ExecutorService (force *executor*))
       (.build)))
 
-(defmethod net/edn->client-opts :ws [opts]
+(defmethod net/edn->client-opts :java/ws [opts]
   (assoc opts :client (mk-http-client)))
