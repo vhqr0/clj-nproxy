@@ -3,7 +3,8 @@
   https://trojan-gfw.github.io/trojan/protocol"
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
-            [clj-nproxy.proxy :as proxy])
+            [clj-nproxy.proxy :as proxy]
+            [clj-nproxy.plugin.socks5 :as socks5])
   (:import [java.io InputStream OutputStream]
            [java.security MessageDigest]))
 
@@ -11,7 +12,7 @@
   (st/keys
    :auth st/st-http-line
    :cmd st/st-ubyte
-   :addr proxy/st-socks5-addr
+   :addr socks5/st-addr
    :rsv st/st-http-line))
 
 (defmethod proxy/mk-client :trojan [{:keys [auth]} ^InputStream is ^OutputStream os host port callback]
