@@ -1,4 +1,5 @@
 (ns clj-nproxy.plugin.ws
+  "Websocket net client impl."
   (:require [clojure.core.async :as a]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])

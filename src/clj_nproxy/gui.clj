@@ -1,4 +1,5 @@
 (ns clj-nproxy.gui
+  "Graphic user interface."
   (:require [clojure.string :as str]
             [clj-nproxy.cli :as cli])
   (:import [java.time Instant ZoneId LocalDateTime]

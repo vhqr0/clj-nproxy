@@ -1,4 +1,5 @@
 (ns clj-nproxy.server
+  "Proxy server."
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net]

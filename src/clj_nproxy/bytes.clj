@@ -1,4 +1,5 @@
 (ns clj-nproxy.bytes
+  "Bytes utils."
   (:refer-clojure :exclude [cat rand])
   (:import [java.util Arrays Random HexFormat Base64]
            [java.security SecureRandom]))

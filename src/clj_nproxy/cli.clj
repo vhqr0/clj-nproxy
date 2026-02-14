@@ -1,4 +1,5 @@
 (ns clj-nproxy.cli
+  "Command line interface."
   (:require [clj-nproxy.server :as server]
             [clj-nproxy.config :as config]))
 

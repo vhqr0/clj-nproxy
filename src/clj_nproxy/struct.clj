@@ -1,4 +1,5 @@
 (ns clj-nproxy.struct
+  "Structure IO utils."
   (:refer-clojure :exclude [keys])
   (:require [clj-nproxy.bytes :as b])
   (:import [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]

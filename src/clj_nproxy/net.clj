@@ -1,4 +1,5 @@
 (ns clj-nproxy.net
+  "Network abstraction."
   (:require [clj-nproxy.struct :as st])
   (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.net InetSocketAddress Socket ServerSocket]

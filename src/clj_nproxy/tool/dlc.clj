@@ -1,4 +1,7 @@
 (ns clj-nproxy.tool.dlc
+  "Generate tags config from domain-list-community:
+  - origin: https://github.com/v2fly/domain-list-community
+  - fork: https://github.com/vhqr0/domain-list-community"
   (:require [clojure.string :as str]
             [clj-nproxy.config :as config])
   (:import [java.io File]))

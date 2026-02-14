@@ -1,4 +1,7 @@
 (ns clj-nproxy.plugin.vmess
+  "Vmess proxy client impl.
+  - vmess legacy: https://github.com/v2fly/v2fly-github-io/blob/master/docs/developer/protocols/vmess.md
+  - vmess aead: https://github.com/v2fly/v2fly-github-io/issues/20/"
   (:require [clojure.string :as str]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]

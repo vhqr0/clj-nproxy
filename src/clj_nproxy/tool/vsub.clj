@@ -1,4 +1,6 @@
 (ns clj-nproxy.tool.vsub
+  "Fetch and generate outbound config via V2rayN subscribe protocol:
+  https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link"
   (:refer-clojure :exclude [list])
   (:require [clojure.string :as str]
             [clojure.data.json :as json]
