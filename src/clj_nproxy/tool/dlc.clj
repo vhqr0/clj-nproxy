@@ -6,9 +6,23 @@
 (set! clojure.core/*warn-on-reflection* true)
 
 (defn data-file
+  "Get data file by name."
   [opts name]
   (let [{:keys [data-dir] :or {data-dir "domain-list-community/data"}} opts]
     (File. (str data-dir "/" name))))
+
+(defn trim-comments
+  "Trim comments."
+  [line]
+  (if-let [i (str/index-of line \#)]
+    (subs line 0 i)
+    line))
+
+^:rct/test
+(comment
+  (trim-comments "foo # bar") ; => "foo "
+  (trim-comments "foo bar") ; => "foo bar"
+  )
 
 (def line-re
   #"^((\w+):)?([^\s\t#]+)( @([^\s\t#]+))?")
@@ -21,33 +35,38 @@
   )
 
 (def tag-map
+  "Mapping from dlc tags to nproxy tags."
   {"ads" :block "cn" :direct "!cn" :proxy})
 
 (defn read-data-tags
-  "Return seq of tags."
+  "Read tags from data file."
   [opts name default-tag]
   (->> (slurp (data-file opts name))
        str/split-lines
+       (map (comp str/trim trim-comments))
+       (remove str/blank?)
        (mapcat
         (fn [line]
-          (let [line (-> (first (str/split line #"#" 2)) str/trim)]
-            (when-not (str/blank? line)
-              (if-let [matches (re-matches line-re line)]
-                (case (or (get matches 2) "domain")
-                  ("domain" "full") (let [domain (get matches 3)
-                                          tag (get matches 5)
-                                          tag (get tag-map tag default-tag)]
-                                      [[domain tag]])
-                  "include" (let [name (get matches 3)]
-                              (read-data-tags opts name default-tag))
-                  ;; we don't support regexp yet
-                  "regexp" nil
-                  (prn {:type :parse-error :line line}))
-                (prn {:type :parse-error :line line}))))))))
+          (if-let [matches (re-matches line-re line)]
+            (case (or (get matches 2) "domain")
+              ("domain" "full")
+              (let [domain (get matches 3)
+                    tag (or (get matches 5) default-tag)]
+                (if-let [tag (get tag-map tag)]
+                  [[domain tag]]
+                  (throw (ex-info "unknown tag" {:reason ::unknown-tag :line line}))))
+              "include"
+              (let [name (get matches 3)]
+                (read-data-tags opts name default-tag))
+              ;; NOTE not supported
+              "regexp" nil
+              (throw (ex-info "unknown command" {:reason ::unknown-command :line line})))
+            (throw (ex-info "mismatch" {:reason ::mismatch :line line})))))))
 
 (defn gen
+  "Read tags from data, then generate tags config."
   [opts]
   (let [tags (into {} (concat
-                       (read-data-tags opts "cn" :direct)
-                       (read-data-tags opts "geolocation-!cn" :proxy)))]
+                       (read-data-tags opts "cn" "cn")
+                       (read-data-tags opts "geolocation-!cn" "!cn")))]
     (config/write opts "tags.edn" tags)))

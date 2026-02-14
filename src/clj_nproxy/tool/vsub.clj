@@ -7,59 +7,79 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
-(defn sub->nodes
-  "Parse sub text, return seq of vmess nodes."
+(defn sub->urls
+  "Parse sub text, return urls."
   [^String sub]
-  (->> sub
-       b/base64->bytes
-       b/bytes->str
-       str/split-lines
-       (keep
-        (fn [url]
-          (let [url (str/trim url)]
-            (when (str/starts-with? url "vmess://")
-              (-> (subs url 8) b/base64->bytes b/bytes->str json/read-str)))))))
+  (let [lines (-> sub b/base64->bytes b/bytes->str str/split-lines)]
+    (->> lines (map str/trim) (remove str/blank?))))
+
+(defn url->node
+  "Convert url to vmess node, or nil if not a vmess url."
+  [^String url]
+  (when (str/starts-with? url "vmess://")
+    (-> (subs url 8) b/base64->bytes b/bytes->str json/read-str)))
+
+(defn sub->nodes
+  "Parse sub text, return vmess nodes."
+  [^String sub]
+  (->> sub sub->urls (keep url->node)))
+
+(defmulti node->net-opts
+  "Convert node to net opts."
+  (fn [node] (get node "net" "tcp")))
+
+(defn ssl?
+  "Check if node use ssl."
+  [{:keys [tls] :or {tls ""}}]
+  (case tls "" false "tls" true))
+
+(defmethod node->net-opts "tcp" [{:strs [add port] :as node}]
+  {:type :tcp :host add :port (parse-long port) :ssl? (ssl? node)})
+
+(defmethod node->net-opts "ws" [{:strs [add port path host] :or {path "/"} :as node}]
+  (let [schema (if (ssl? node) "wss" "ws")
+        uri (format "%s://%s:%s%s" schema add port path)]
+    (merge
+     {:type :ws :uri uri}
+     (when (some? host)
+       {:headers {"host" host}}))))
 
 (defn node->outbound-opts
   "Convert node to vmess outbound opts."
   [node]
-  (let [{:strs [ps id add port net tls host path] :or {net "tcp" path "/"}} node
-        port (parse-long port)
-        ssl? (= tls "tls")]
+  (let [{:strs [ps id]} node]
     {:type :proxy
      :name ps
-     :net-opts (case net
-                 "tcp" {:type :tcp :host add :port port :ssl? ssl?}
-                 "ws" (let [schema (if ssl? "wss" "ws")
-                            uri (format "%s://%s:%d%s" schema add port path)]
-                        (merge
-                         {:type :ws :uri uri}
-                         (when (some? host)
-                           {:headers {"host" host}}))))
+     :net-opts (node->net-opts node)
      :proxy-opts {:type :vmess :uuid id}}))
 
 (defn read-nodes
+  "Read nodes."
   [opts]
   (let [sub (config/read-text opts "sub.txt")]
     (->> sub sub->nodes)))
 
 (defn print-nodes
+  "Print nodes."
   [nodes]
   (doseq [[i node] (map-indexed vector nodes)]
     (prn {:index i :node node})))
 
 (defn list
+  "Read and print nodes."
   [opts]
   (print-nodes (read-nodes opts)))
 
 (defn fetch
+  "Fetch sub, then read and print nodes."
   [opts]
   (let [url (str/trim (config/read-text opts "sub.url"))
         sub (str/trim (slurp url))]
     (config/write opts "sub.txt" sub)
     (list opts)))
 
-(defn select
+(defn gen
+  "Read and print nodes, then select some nodes and generate outobund config."
   [opts]
   (let [nodes (read-nodes opts)]
     (print-nodes nodes)
