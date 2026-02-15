@@ -1,0 +1,321 @@
+* nproxy
+
+** 总览
+
+nproxy 是使用 Clojure 开发的代理工具（类似 v2ray、trojan，如果你有了解），有以下亮点：
+
+- 功能特性：
+  - 界面：支持 CLI 和 GUI（swing）。
+  - 协议：支持 websocket、http、socks5、trojan、vmess 协议。
+  - 订阅：支持 V2rayN 格式的 vmess 节点订阅管理。
+  - 分流：支持导入 v2ray 社区维护的分流规则。
+- 灵活配置：支持任意维度的配置拆分到单独文件。
+- 简单扩展：支持自定义协议插件，通过配置激活，无需修改代码。
+- 最小化依赖：几乎没有使用第三方库，降低维护风险。
+- 性能：基于 java.io 和虚拟线程构建，性能出色。
+
+** 配置
+
+代理工具本质上是代理请求的接收和处理，因此配置中主要描述代理入口（inbound）和代理出口（outbound），例如默认配置：
+
+#+begin_src clojure
+  {:inbound {:type :proxy
+             :net-opts {:type :tcp :port 1080}
+             :proxy-opts {:type :socks5}}
+   :outbound {:type :direct}}
+#+end_src
+
+=inbound= 配置指定了在本地 1080 端口上接收 socks5 协议的代理请求， =outbound= 配置指定了以直连的方式处理代理请求。
+
+*** inbound
+
+最基础的入口类型是 proxy，它包含两个选项：net-opts 和 proxy-opts，分别描述如何接收网络连接和如何从网络连接中获取代理请求，例如默认配置：
+
+#+begin_src clojure
+  {:type :proxy
+   :net-opts {:type :tcp :port 1080}
+   :proxy-opts {:type :socks5}}
+#+end_src
+
+=net-opts= 指定了在本地 1080 端口上获取 tcp 连接， =proxy-opts= 指定了在连接上获取 socks5 协议的代理请求。
+
+其它可选的网络配置（net-opts）有：
+
+- ssl/tls :: ={:type :tcp :port 1080 :ssl? true}=
+- ws :: ={:type :ws :port 1080}=
+- wss :: ={:type :ws :port 1080 :ssl? true}=
+
+其它可选的代理配置（proxy-opts）有：
+
+- http :: ={:type :http}=
+- trojan :: ={:type :trojan :password "CHANGEIT"}=
+
+使用 multi 类型的入口可以同时监听多个端口，例如：
+
+#+begin_src clojure
+  {:type :multi
+   :inbounds [{:type :proxy
+               :net-opts {:type :tcp :port 1080}
+               :proxy-opts {:type :socks5}}
+              {:type :proxy
+               :net-opts {:type :tcp :port 1081}
+               :proxy-opts {:type :http}}]}
+#+end_src
+
+指定了在本地 1080 端口上获取 socks5 协议的代理请求，在本地 1081 端口上获取 http 协议的代理请求。
+
+*** outbound
+
+有三类最基础的出口类型：direct、block、和 proxy。
+
+direct 表示直连，例如：
+
+#+begin_src clojure
+  {:type :direct}
+#+end_src
+
+收到代理请求后，会直接连接请求的地址端口然后转发之间的流量，即正常代理。
+
+block 表示丢弃请求，例如：
+
+#+begin_src clojure
+  {:type :block}
+#+end_src
+
+收到代理请求后，会等待一段时间然后关闭连接。
+
+proxy 表示通过第三方代理转发，例如：
+
+#+begin_src clojure
+  {:type :proxy
+   :net-opts {:type :tcp :host "foo" :port 1080}
+   :proxy-opts {:type :socks5}}
+#+end_src
+
+=net-opts= 指定了通过 tcp 连接到节点的地址端口 foo:1080， =proxy-opts= 指定了通过 socks5 协议发送代理请求。
+
+其它可选的网络配置（net-opts）有：
+
+- ssl/tls :: ={:type :tcp :host "foo" :port 443 :ssl? true}=
+- ws :: ={:type :ws :host "foo" :port 80 :path "/" :headers {"host" "foo"}}=
+- wss :: ={:type :ws :host "foo" :port 443 :ssl? true :path "/" :headers {"host" "foo"}}=
+
+其它可选的代理配置（proxy-opts）有：
+
+- http :: ={:type :http}=
+- trojan :: ={:type :trojan :password "CHANGEIT"}=
+- vmess :: ={:type :vmess :uuid "CHANGEIT"}=
+
+还有一些高阶出口类型用来组合多个基础出口类型：rand-dispatch 和 tag-dispatch：
+
+rand-dispatch 表示随机分派（例如对多个第三方代理服务做负载均衡），例如：
+
+#+begin_src clojure
+  {:type :rand-dispatch
+   :outbounds [{:type :proxy
+                :net-opts {:type :tcp :host "foo" :port 1080}
+                :proxy-opts {:type :socks5}}
+               {:type :proxy
+                :net-opts {:type :tcp :host "bar" :port 1080}
+                :proxy-opts {:type :socks5}}]}
+#+end_src
+
+指定了把代理请求随机转发到 foo:1080 或 bar:1080 上的 socks5 代理服务。
+
+tag-dispatch 实现了基于分流规则（域名匹配）的分派，例如：
+
+#+begin_src clojure
+  {:type :tag-dispatch
+   :tags {"baidu.com" :direct "google.com" :proxy "ads.com" :block}
+   :default-tag :direct
+   :outbounds {:direct {:type :direct}
+               :block {:type :block}
+               :proxy {:type :proxy
+                       :net-opts {:type :tcp :host "foo" :port 1080}
+                       :proxy-opts {:type :socks5}}}}
+#+end_src
+
+指定了 baidu.com 及其所有子域名的 tag 为 direct，当收到这些代理请求时直连；同理 google.com 通过第三方域名转发，ads.com 直接丢弃。
+
+*** plugins
+
+默认配置下只支持 tcp 类型的网络协议和 http、socks5 类型的代理协议，其它协议需要在配置中指定插件启用，例如：
+
+#+begin_src clojure
+  {:plugins [clj-nproxy.plugin.ws clj-nproxy.plugin.vmess]
+   :outbound {:type :proxy
+              :net-opts {:type :ws :host "foo" :port 80}
+              :proxy-opts {:type :vmess :uuid "CHANGEIT"}}}
+#+end_src
+
+指定加载了两个插件：ws 和 vmess，分别提供 ws 和 vmess 协议。
+
+（你可能注意到了， =plugins= 实际上是 Clojure 命名空间的序列，使用者也可以在单独的命名空间中定义自己的协议）
+
+配置的插件有：
+
+- =clj-nproxy.plugin.ws= :: 提供 ws 网络协议。
+- =clj-nproxy.plugin.trojan= :: 提供 trojan 代理协议。
+- =clj-nproxy.plugin.vmess= :: 提供 vmess 代理协议。
+
+** 配置文件
+
+所有配置文件放到 =.nproxy/= 目录下面，默认从 =.nproxy/config.edn= 中读取配置（可指定其它配置文件），例如：
+
+=.nproxy/config.edn=
+
+#+begin_src clojure
+  {:plugins [clj-nproxy.plugin.ws clj-nproxy.plugin.vmess]
+   :inbound {:type :proxy
+             :net-opts {:type :tcp :port 1080}}
+   :outbound {:type :tag-dispatch
+              :tags {"baidu.com" :direct "google.com" :proxy "ads.com" :block}
+              :default-tag :direct
+              :outbounds {:direct {:type :direct}
+                          :block {:type :block}
+                          :proxy {:type :rand-dispatch
+                                  :outbounds [{:type :proxy
+                                               :net-opts {:type :tcp :host "foo" :port 1080}
+                                               :proxy-opts {:type :socks5}}
+                                              {:type :proxy
+                                               :net-opts {:type :tcp :host "bar" :port 1080}
+                                               :proxy-opts {:type :socks5}}]}}}}
+#+end_src
+
+任意维度的配置都可以拆分到单独的文件中，例如把 tags 和 proxy 拆分到 tags.edn 和 sub.edn：
+
+=.nproxy/config.edn=
+
+#+begin_src clojure
+  {:plugins [clj-nproxy.plugin.ws clj-nproxy.plugin.vmess]
+   :inbound {:type :proxy
+             :net-opts {:type :tcp :port 1080}}
+   :outbound {:type :tag-dispatch
+              :tags #file "tags.edn"
+              :default-tag :direct
+              :outbounds {:direct {:type :direct}
+                          :block {:type :block}
+                          :proxy #file "sub.edn"}}}
+#+end_src
+
+=.nproxy/tags.edn=
+
+#+begin_src clojure
+  {"baidu.com" :direct "google.com" :proxy "ads.com" :block}
+#+end_src
+
+=.nproxy/sub.edn=
+
+#+begin_src clojure
+  {:type :rand-dispatch
+   :outbounds [{:type :proxy
+                :net-opts {:type :tcp :host "foo" :port 1080}
+                :proxy-opts {:type :socks5}}
+               {:type :proxy
+                :net-opts {:type :tcp :host "bar" :port 1080}
+                :proxy-opts {:type :socks5}}]}
+#+end_src
+
+在读取配置文件时，定义了特殊的读取宏 =#file= 支持从配置目录中的其它文件中读取配置。
+
+** 工具
+
+*** start-server
+
+#+begin_src sh
+  clojure -X clj-nproxy.cli/start-server
+  clojure -X clj-nproxy.gui/start-server
+#+end_src
+
+
+从 =.nproxy/config.edn= 中读取配置，启动服务。后者还会启动一个 GUI（swing）。
+
+配置文件是可指定的，例如：
+
+#+begin_src sh
+  clojure -X clj-nproxy.cli/start-server '{:config-name "test.edn"}'
+#+end_src
+
+指定从 =.nproxy/test.edn= 中读取测试配置。
+
+*** 【科学上网】vsub
+
+V2rayN 格式的订阅管理工具。
+
+相关链接：https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.vsub/fetch
+#+end_src
+
+从 =.nproxy/sub.url= 中读取订阅链接，获取订阅内容保存到 =.nproxy/sub.txt= 。
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.vsub/list
+#+end_src
+
+列出 =.nproxy/sub.txt= 中的所有 vmess 节点。
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.vsub/gen
+#+end_src
+
+列出 =.nproxy/sub.txt= 中的所有 vmess 节点，使用者从中选择若干个节点（读取 edn，格式为数字或数字序列），生成出口配置保存到 =.nproxy/sub.edn= 。
+
+*** 【科学上网】dlc
+
+社区维护的分流规则导入工具。
+
+相关连接：https://github.com/v2fly/domain-list-community
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.dlc/gen
+#+end_src
+
+从 =.nproxy/domain-list-community/= 仓库中读取域名列表，生成 tags 配置保存到 =.nproxy/tags.edn= 。
+
+有三种 tags：direct、proxy 和 block。
+
+** 科学上网最佳实践
+
+按照 [[配置文件]] 中的示例添加 =.nproxy/config.edn= 。 =.nproxy/sub.edn= 和 =.nproxy/tags.edn= 由工具生成。
+
+=.nproxy/sub.edn=
+
+=step 1= 从你购买的机场中获取订阅链接，复制到 =.nproxy/sub.url= ，例如：
+
+#+begin_src sh
+  echo https://example.com > .nproxy/sub.url
+#+end_src
+
+=step 2= 获取/更新订阅内容，保存到 =.nproxy/sub.txt= ，例如：
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.vsub/fetch
+#+end_src
+
+=step 3= 列出所有节点信息，选择若干个节点（例如输入数字）生成配置保存到 =.nproxy/sub.edn= ，例如：
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.vsub/gen
+#+end_src
+
+=.nproxy/tags.edn=
+
+=step 1= 克隆 dlc（domain list community）仓库到 =.nproxy/domain-list-community/= ，例如：
+
+#+begin_src sh
+  git clone https://github.com/v2fly/domain-list-community .nproxy/domain-list-community
+#+end_src
+
+=step 2= 生成 tags 配置保存到 =.nproxy/tags.edn= ，例如：
+
+#+begin_src sh
+  clojure -X clj-nproxy.tool.dlc/gen
+#+end_src
+
+=开始=
+
+#+begin_src sh
+  clojure -X clj-nproxy.gui/start-server
+#+end_src
