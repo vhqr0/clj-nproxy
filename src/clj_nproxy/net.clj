@@ -59,7 +59,8 @@
 (defn socket->callback-params
   "Convert socket to callback params."
   [^Socket socket]
-  {:peer (socket->peer socket)
+  {:socket socket
+   :peer (socket->peer socket)
    :input-stream (socket->input-stream socket)
    :output-stream (socket->output-stream socket)})
 
