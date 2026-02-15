@@ -282,7 +282,7 @@ V2rayN 格式的订阅管理工具。
 
 =.nproxy/sub.edn=
 
-=step 1= 从你购买的机场中获取订阅链接，复制到 =.nproxy/sub.url= ，例如：
+=step 1= 从供应商获取订阅链接，复制到 =.nproxy/sub.url= ，例如：
 
 #+begin_src sh
   echo https://example.com > .nproxy/sub.url
