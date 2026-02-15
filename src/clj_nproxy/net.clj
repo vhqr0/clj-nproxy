@@ -5,7 +5,7 @@
            [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.net InetSocketAddress Socket ServerSocket]
            [javax.net SocketFactory ServerSocketFactory]
-           [javax.net.ssl SSLSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
+           [javax.net.ssl SSLSocket SSLServerSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -98,12 +98,29 @@
                          (mk-socket host port))]
     (socket-callback socket callback)))
 
+(defn mk-server-socket
+  "Make tcp server socket."
+  ^ServerSocket [^long port]
+  (let [^ServerSocketFactory fac (ServerSocketFactory/getDefault)]
+    (.createServerSocket fac port)))
+
+(defn mk-ssl-server-socket
+  "Make ssl server socket."
+  ^SSLServerSocket [^long port ssl-params]
+  (let [^SSLServerSocketFactory fac (SSLServerSocketFactory/getDefault)
+        ^SSLServerSocket server (.createServerSocket fac port)]
+    (when-let [{:keys [alpn]} ssl-params]
+      (let [^SSLParameters params (.getSSLParameters server)]
+        (when (some? alpn)
+          (.setApplicationProtocols params (object-array alpn)))
+        (.setSSLParameters server params)))
+    server))
+
 (defmethod mk-server :tcp [opts callback]
-  (let [{:keys [port ssl?]} opts
-        ^ServerSocketFactory fac (if ssl?
-                                   (SSLServerSocketFactory/getDefault)
-                                   (ServerSocketFactory/getDefault))
-        ^ServerSocket server (.createServerSocket fac port)]
+  (let [{:keys [port ssl? ssl-params]} opts
+        ^ServerSocket server (if ssl?
+                               (mk-ssl-server-socket port ssl-params)
+                               (mk-server-socket port))]
     (Thread/startVirtualThread
      (fn []
        (with-open [server server]
