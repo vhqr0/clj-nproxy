@@ -8,7 +8,7 @@
   (:import [java.io InputStream OutputStream]
            [java.security MessageDigest]))
 
-(def st-trojan-req
+(def st-req
   (st/keys
    :auth st/st-http-line
    :cmd st/st-ubyte
@@ -16,12 +16,12 @@
    :rsv st/st-http-line))
 
 (defmethod proxy/mk-client :trojan [{:keys [auth]} ^InputStream is ^OutputStream os host port callback]
-  (st/write-struct st-trojan-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
+  (st/write-struct st-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
   (.flush os)
   (callback {:input-stream is :output-stream os}))
 
 (defmethod proxy/mk-server :trojan [{:keys [auth]} ^InputStream is ^OutputStream os callback]
-  (let [{:keys [cmd rsv] {:keys [host port]} :addr :as req} (st/read-struct st-trojan-req is)]
+  (let [{:keys [cmd rsv] {:keys [host port]} :addr :as req} (st/read-struct st-req is)]
     (if-not (and (= auth (:auth req)) (= cmd 1) (= rsv ""))
       (throw (st/data-error))
       (callback {:input-stream is :output-stream os :host host :port port}))))
