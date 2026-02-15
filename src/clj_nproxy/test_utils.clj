@@ -1,6 +1,7 @@
-(ns clj-nproxy.test.proto
-  "Protocol test utils."
-  (:require [clj-nproxy.proxy :as proxy])
+(ns clj-nproxy.test-utils
+  "Test utils."
+  (:require [clj-nproxy.struct :as st]
+            [clj-nproxy.proxy :as proxy])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
            [java.io PipedInputStream PipedOutputStream]))
 
@@ -21,20 +22,15 @@
 
 (defn proxy-handshake
   "Run proxy handhsake on internal pipe stream."
-  ([client-opts server-opts]
-   (proxy-handshake client-opts server-opts "example.com" 80))
-  ([client-opts server-opts host port]
-   (let [vclient (volatile! nil)
-         vserver (volatile! nil)]
-     (handshake
-      (fn [{is :input-stream os :output-stream}]
-        (proxy/mk-client
-         client-opts is os host port
-         (fn [server]
-           (vreset! vserver (dissoc server :input-stream :output-stream)))))
-      (fn [{is :input-stream os :output-stream}]
-        (proxy/mk-server
-         server-opts is os
-         (fn [client]
-           (vreset! vclient (dissoc client :input-stream :output-stream))))))
-     [@vclient @vserver])))
+  [client-opts server-opts host port client-proc server-proc]
+  (handshake
+   (fn [{is :input-stream os :output-stream}]
+     (proxy/mk-client
+      client-opts is os host port
+      (fn [server]
+        (client-proc server))))
+   (fn [{is :input-stream os :output-stream}]
+     (proxy/mk-server
+      server-opts is os
+      (fn [client]
+        (server-proc client))))))
