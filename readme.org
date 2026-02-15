@@ -152,7 +152,7 @@ tag-dispatch 实现了基于分流规则（域名匹配）的分派，例如：
 
 （你可能注意到了， =plugins= 实际上是 Clojure 命名空间的序列，使用者也可以在单独的命名空间中定义自己的协议）
 
-配置的插件有：
+内置的插件有：
 
 - =clj-nproxy.plugin.ws= :: 提供 ws 网络协议。
 - =clj-nproxy.plugin.trojan= :: 提供 trojan 代理协议。
