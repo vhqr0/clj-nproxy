@@ -30,26 +30,58 @@
   "Convert node to net opts."
   (fn [node] (get node "net" "tcp")))
 
-(defn ssl?
-  "Check if node use ssl."
-  [{:keys [tls] :or {tls ""}}]
-  (case tls "" false "tls" true))
+(defn node->ssl-params
+  "Convert node to ssl params."
+  [{:strs [add host sni alpn]}]
+  (merge
+   (let [sni (or sni host add)]
+     {:sni [sni]})
+   (when (some? alpn)
+     {:alpn [alpn]})))
 
-(defmethod node->net-opts "tcp" [{:strs [add port] :as node}]
-  {:type :tcp :host add :port (parse-long port) :ssl? (ssl? node)})
+(defn node->base-net-opts
+  "Convert node to base net opts."
+  [{:strs [add port tls] :as node}]
+  (merge
+   {:host add :port (parse-long port)}
+   (when (= tls "tls")
+     {:ssl? true :ssl-params (node->ssl-params node)})))
+
+^:rct/test
+(comment
+  (node->base-net-opts {"add" "foo", "port" "80", "tls" ""}) ; => {:host "foo" :port 80}
+  (node->base-net-opts {"add" "foo", "port" "80", "tls" "tls"}) ; => {:host "foo" :port 80 :ssl? true :ssl-params {:sni ["foo"]}}
+  (node->base-net-opts {"add" "foo", "port" "80", "tls" "tls", "host" "bar"}) ; => {:host "foo" :port 80 :ssl? true :ssl-params {:sni ["bar"]}}
+  (node->base-net-opts {"add" "foo", "port" "80", "tls" "tls", "alpn" "h2"}) ; => {:host "foo" :port 80 :ssl? true :ssl-params {:sni ["foo"] :alpn ["h2"]}}
+  )
+
+(defmethod node->net-opts "tcp" [node]
+  (merge {:type :tcp}
+         (node->base-net-opts node)))
 
 (defmethod node->net-opts "ws" [{:strs [add port path host] :or {path "/"} :as node}]
-  {:type :ws :host add :port (parse-long port) :ssl? (ssl? node)
-   :path path :headers {"host" (or host add)}})
+  (merge {:type :ws}
+         (node->base-net-opts node)
+         {:path path :headers {"host" (or host add)}}))
+
+^:rct/test
+(comment
+  (node->net-opts {"net" "ws", "add" "foo", "port" "80", "tls" "tls", "host" "bar"})
+  ;; => {:type :ws :host "foo" :port 80 :ssl? true :ssl-params {:sni ["bar"]} :path "/" :headers {"host" "bar"}}
+  )
+
+(defn node->proxy-opts
+  "Convert node to vmess proxy opts."
+  [{:strs [id]}]
+  {:type :vmess :uuid id})
 
 (defn node->outbound-opts
   "Convert node to vmess outbound opts."
-  [node]
-  (let [{:strs [ps id]} node]
-    {:type :proxy
-     :name ps
-     :net-opts (node->net-opts node)
-     :proxy-opts {:type :vmess :uuid id}}))
+  [{:strs [ps] :as node}]
+  {:type :proxy
+   :name ps
+   :net-opts (node->net-opts node)
+   :proxy-opts (node->proxy-opts node)})
 
 (defn read-nodes
   "Read nodes."
@@ -69,7 +101,7 @@
   (print-nodes (read-nodes opts)))
 
 (defn fetch
-  "Fetch sub, then read and print nodes."
+  "Fetch sub then read and print nodes."
   [opts]
   (let [url (str/trim (config/read-text opts "sub.url"))
         sub (str/trim (slurp url))]
@@ -77,7 +109,7 @@
     (list opts)))
 
 (defn gen
-  "Read and print nodes, then select some nodes and generate outobund config."
+  "Read and print nodes then select some nodes and generate outobund config."
   [opts]
   (let [nodes (read-nodes opts)]
     (print-nodes nodes)
