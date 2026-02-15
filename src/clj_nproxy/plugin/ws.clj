@@ -90,60 +90,34 @@
                       (some? mask) (mask-data mask)))]
     (.write os data)))
 
+;; ignore ping pong: it's stupid
+
 (defn wrap-input-stream
   "Wrap input stream."
-  ^InputStream [^InputStream is apings]
-  (let [vlast (volatile! nil)
-        read-frame-fn (fn []
-                        (let [{:keys [op fin? data]} (read-frame is)
-                              data (if-let [[lop ldata] @vlast]
-                                     (if (= op lop)
-                                       (b/cat ldata data)
-                                       (throw (st/data-error)))
-                                     data)]
-                          (if fin?
-                            (do
-                              (vreset! vlast nil)
-                              [op data])
-                            (do
-                              (vreset! vlast [op data])
-                              (recur)))))
-        read-fn (fn []
-                  (let [[op data] (read-frame-fn)]
+  ^InputStream [^InputStream is]
+  (let [read-fn (fn []
+                  (let [{:keys [op data]} (read-frame is)]
                     (case (int op)
-                      ;; continue
-                      0 (recur)
-                      ;; text
-                      1 (throw (st/data-error))
-                      ;; binary
-                      2 (if-not (zero? (alength (bytes data))) data (recur))
-                      ;; close
+                      (0 9 10) (recur)
                       8 nil
-                      ;; ping
-                      9 (do (swap! apings conj data) (recur))
-                      ;; pong
-                      10 (recur))))]
+                      2 (let [data (bytes data)]
+                          (if-not (zero? (alength data))
+                            data
+                            (recur))))))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
 
 (defn wrap-output-stream
   "Wrap output stream."
-  ^OutputStream [^OutputStream os apings mask?]
+  ^OutputStream [^OutputStream os mask?]
   (let [write-frame-fn (fn [op data]
                          (write-frame os {:op op :fin? true :mask (when mask? (b/rand 4)) :data data})
                          (.flush os))
-        write-pongs-fn (fn []
-                         (when-let [ping (first @apings)]
-                           (write-frame-fn 10 ping)
-                           (swap! apings (comp vec rest))
-                           (recur)))
         write-fn (fn [b]
                    (let [b (bytes b)]
                      (when-not (zero? (alength b))
-                       (write-pongs-fn)
                        (write-frame-fn 2 b))))
         close-fn (fn []
-                   (write-pongs-fn)
                    (write-frame-fn 8 (byte-array []))
                    (.close os))]
     (BufferedOutputStream.
@@ -176,11 +150,10 @@
     (.flush os)
     (let [{:keys [status] :as resp} (st/read-struct http/st-http-resp is)]
       (if (= status "101")
-        (let [apings (atom [])]
-          (callback
-           {:http-resp resp
-            :input-stream (wrap-input-stream is apings)
-            :output-stream (wrap-output-stream os apings true)}))
+        (callback
+         {:http-resp resp
+          :input-stream (wrap-input-stream is)
+          :output-stream (wrap-output-stream os true)})
         (throw (st/data-error))))))
 
 (defn mk-server
@@ -198,11 +171,10 @@
                      headers)]
         (st/write-struct http/st-http-resp os {:status "101" :reason "Switching Protocols" :headers headers})
         (.flush os)
-        (let [apings (atom [])]
-          (callback
-           {:http-req req
-            :input-stream (wrap-input-stream is apings)
-            :output-stream (wrap-output-stream os apings false)})))
+        (callback
+         {:http-req req
+          :input-stream (wrap-input-stream is)
+          :output-stream (wrap-output-stream os false)}))
       (throw (st/data-error)))))
 
 (defmethod net/mk-client :ws [opts callback]
