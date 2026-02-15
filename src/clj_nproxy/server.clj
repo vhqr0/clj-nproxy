@@ -35,9 +35,7 @@
    net-opts
    (fn [net-client]
      (proxy/mk-server
-      proxy-opts
-      (:input-stream net-client)
-      (:output-stream net-client)
+      proxy-opts net-client
       (fn [proxy-client]
         (callback
          (merge
@@ -49,11 +47,7 @@
    net-opts
    (fn [net-server]
      (proxy/mk-client
-      proxy-opts
-      (:input-stream net-server)
-      (:output-stream net-server)
-      host
-      port
+      proxy-opts net-server host port
       (fn [proxy-server]
         (callback
          (merge

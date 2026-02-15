@@ -113,8 +113,9 @@
   (pack-hostport "2000::1" 443) ; => "[2000::1]:443"
   )
 
-(defmethod proxy/mk-client :http [{:keys [headers]} ^InputStream is ^OutputStream os host port callback]
-  (let [hostport (pack-hostport host port)
+(defmethod proxy/mk-client :http [{:keys [headers]} server host port callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
+        hostport (pack-hostport host port)
         headers (merge {"host" hostport} headers)]
     (st/write-struct st-http-req os {:method "CONNECT" :path hostport :headers headers})
     (.flush os)
@@ -123,8 +124,9 @@
         (callback {:http-resp resp :input-stream is :output-stream os})
         (throw (st/data-error))))))
 
-(defmethod proxy/mk-server :http [{:keys [headers]} ^InputStream is ^OutputStream os callback]
-  (let [{:keys [method path] :as req} (st/read-struct st-http-req is)]
+(defmethod proxy/mk-server :http [{:keys [headers]} client callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+        {:keys [method path] :as req} (st/read-struct st-http-req is)]
     (if (= "connect" (str/lower-case method))
       (let [[host port] (unpack-hostport path)
             headers (merge {"connection" "close"} headers)]

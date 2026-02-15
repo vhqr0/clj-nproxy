@@ -367,8 +367,9 @@
     (BufferedOutputStream.
      (st/write-fn->output-stream write-fn close-fn))))
 
-(defmethod proxy/mk-client :vmess [{:keys [id]} ^InputStream is ^OutputStream os host port callback]
-  (let [params (->params)]
+(defmethod proxy/mk-client :vmess [{:keys [id]} server host port callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
+        params (->params)]
     (.write os (->ereq id params host port))
     (.flush os)
     (callback

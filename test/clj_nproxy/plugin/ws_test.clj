@@ -9,14 +9,14 @@
               (fn [server]
                 (ws/mk-client
                  nil server
-                 (fn [{is :input-stream os :output-stream}]
+                 (fn [server]
                    (proxy/mk-client
-                    {:type :http} is os "example.com" 80
+                    {:type :http} server "example.com" 80
                     (fn [_])))))
               (fn [client]
                 (ws/mk-server
                  nil client
-                 (fn [{is :input-stream os :output-stream}]
+                 (fn [client]
                    (proxy/mk-server
-                    {:type :http} is os
+                    {:type :http} client
                     (fn [_])))))))))

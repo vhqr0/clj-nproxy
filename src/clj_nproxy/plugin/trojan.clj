@@ -15,13 +15,15 @@
    :addr socks5/st-addr
    :rsv st/st-http-line))
 
-(defmethod proxy/mk-client :trojan [{:keys [auth]} ^InputStream is ^OutputStream os host port callback]
-  (st/write-struct st-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
-  (.flush os)
-  (callback {:input-stream is :output-stream os}))
+(defmethod proxy/mk-client :trojan [{:keys [auth]} server host port callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server]
+    (st/write-struct st-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
+    (.flush os)
+    (callback {:input-stream is :output-stream os})))
 
-(defmethod proxy/mk-server :trojan [{:keys [auth]} ^InputStream is ^OutputStream os callback]
-  (let [{:keys [cmd rsv] {:keys [host port]} :addr :as req} (st/read-struct st-req is)]
+(defmethod proxy/mk-server :trojan [{:keys [auth]} client callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+        {:keys [cmd rsv] {:keys [host port]} :addr :as req} (st/read-struct st-req is)]
     (if-not (and (= auth (:auth req)) (= cmd 1) (= rsv ""))
       (throw (st/data-error))
       (callback {:input-stream is :output-stream os :host host :port port}))))

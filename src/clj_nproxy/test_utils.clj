@@ -24,13 +24,13 @@
   "Run proxy handhsake on internal pipe stream."
   [client-opts server-opts host port client-proc server-proc]
   (handshake
-   (fn [{is :input-stream os :output-stream}]
+   (fn [server]
      (proxy/mk-client
-      client-opts is os host port
+      client-opts server host port
       (fn [server]
         (client-proc server))))
-   (fn [{is :input-stream os :output-stream}]
+   (fn [client]
      (proxy/mk-server
-      server-opts is os
+      server-opts client
       (fn [client]
         (server-proc client))))))
