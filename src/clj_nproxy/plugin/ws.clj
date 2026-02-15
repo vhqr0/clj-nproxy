@@ -18,44 +18,55 @@
     (dotimes [i (alength data)]
       (aset data i (unchecked-byte (bit-xor (aget data i) (aget mask (bit-and 3 i))))))))
 
+(defn read-fin-op
+  "Read op from stream."
+  [is]
+  (let [fin-op (st/read-ubyte is)
+        fin (bit-and 0x80 fin-op)
+        op (bit-and 0x7f fin-op)
+        fin? (not (zero? fin))]
+    [fin? op]))
+
+(defn write-fin-op
+  "Write op to stream."
+  [os fin? op]
+  (st/write-struct st/st-ubyte os (+ op (if fin? 128 0))))
+
 (defn read-mask-len
   "Read length from stream."
   [is]
   (let [mask-len (st/read-ubyte is)
         mask (bit-and 0x80 mask-len)
         len (bit-and 0x7f mask-len)
+        mask? (not (zero? mask))
         len (case len
               126 (st/read-struct st/st-ushort-be is)
               127 (st/read-struct st/st-long-be is)
               len)]
     (if (neg? len)
       (throw (st/data-error))
-      [mask len])))
+      [mask? len])))
 
 (defn write-mask-len
   "Write length to stream."
-  [os mask len]
+  [os mask? len]
   (cond
     (< len 126)
-    (st/write-struct st/st-ubyte os (+ len (bit-shift-left mask 7)))
+    (st/write-struct st/st-ubyte os (+ len (if mask? 128 0)))
     (< len 65536)
     (do
-      (st/write-struct st/st-ubyte os (+ 126 (bit-shift-left mask 7)))
+      (st/write-struct st/st-ubyte os (+ 126 (if mask? 128 0)))
       (st/write-struct st/st-ushort-be os len))
     :else
     (do
-      (st/write-struct st/st-ubyte os (+ 127 (bit-shift-left mask 7)))
+      (st/write-struct st/st-ubyte os (+ 127 (if mask? 128 0)))
       (st/write-struct st/st-long-be os len))))
 
 (defn read-frame
   "Read frame from stream."
   [^InputStream is]
-  (let [fin-op (st/read-ubyte is)
-        fin (bit-and 0x80 fin-op)
-        op (bit-and 0x7f fin-op)
-        fin? (not (zero? fin))
-        [mask len] (read-mask-len is)
-        mask? (not (zero? mask))
+  (let [[fin? op] (read-fin-op is)
+        [mask? len] (read-mask-len is)
         mask (when mask? (st/read-bytes is 4))
         data (st/read-bytes is len)]
     (when (some? mask)
@@ -65,8 +76,8 @@
 (defn write-frame
   "Write frame to stream."
   [^OutputStream os {:keys [op fin? mask data]}]
-  (.write os (int (+ op (bit-shift-left (if fin? 1 0) 7))))
-  (write-mask-len os (if (some? mask) 1 0) (alength (bytes data)))
+  (write-fin-op os fin? op)
+  (write-mask-len os (some? mask) (alength (bytes data)))
   (when (some? mask)
     (.write os (bytes mask)))
   (let [data (bytes (if (nil? mask)
@@ -87,7 +98,9 @@
                                        (throw (st/data-error)))
                                      data)]
                           (if fin?
-                            [op data]
+                            (do
+                              (vreset! vlast nil)
+                              [op data])
                             (do
                               (vreset! vlast [op data])
                               (recur)))))
