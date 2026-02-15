@@ -18,6 +18,12 @@
     (dotimes [i (alength data)]
       (aset data i (unchecked-byte (bit-xor (aget data i) (aget mask (bit-and 3 i))))))))
 
+(defn mask-data
+  "Mask data."
+  ^bytes [^bytes data ^bytes mask]
+  (doto (b/copy data)
+    (mask-data-inplace mask)))
+
 (defn read-fin-op
   "Read op from stream."
   [is]
@@ -80,10 +86,8 @@
   (write-mask-len os (some? mask) (alength (bytes data)))
   (when (some? mask)
     (.write os (bytes mask)))
-  (let [data (bytes (if (nil? mask)
-                      data
-                      (doto (b/copy data)
-                        (mask-data-inplace mask))))]
+  (let [data (bytes (cond-> data
+                      (some? mask) (mask-data mask)))]
     (.write os data)))
 
 (defn wrap-input-stream
