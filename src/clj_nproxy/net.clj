@@ -1,10 +1,11 @@
 (ns clj-nproxy.net
   "Network abstraction."
   (:require [clj-nproxy.struct :as st])
-  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
+  (:import [java.util Arrays]
+           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.net InetSocketAddress Socket ServerSocket]
            [javax.net SocketFactory ServerSocketFactory]
-           [javax.net.ssl SSLSocketFactory SSLServerSocketFactory]))
+           [javax.net.ssl SSLSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -68,12 +69,32 @@
   (with-open [socket socket]
     (callback (socket->callback-params socket))))
 
+(defn mk-socket
+  "Make tcp socket."
+  ^Socket [^String host ^long port]
+  (let [^SocketFactory fac (SocketFactory/getDefault)]
+    (.createSocket fac host port)))
+
+(defn mk-ssl-socket
+  "Make ssl socket."
+  ^SSLSocket [^String host ^long port ssl-params]
+  (let [^SSLSocketFactory fac (SSLSocketFactory/getDefault)
+        ^SSLSocket socket (.createSocket fac)]
+    (when-let [{:keys [sni alpn]} ssl-params]
+      (let [^SSLParameters params (.getSSLParameters socket)]
+        (when (some? sni)
+          (let [sni (map #(SNIHostName. ^String %) sni)]
+            (.setServerNames params (Arrays/asList (object-array sni)))))
+        (when (some? alpn)
+          (.setApplicationProtocols params (object-array alpn)))
+        (.setSSLParameters socket params)))
+    socket))
+
 (defmethod mk-client :tcp [opts callback]
-  (let [{:keys [host port ssl?]} opts
-        ^SocketFactory fac (if ssl?
-                             (SSLSocketFactory/getDefault)
-                             (SocketFactory/getDefault))
-        ^Socket socket (.createSocket fac ^String host ^int port)]
+  (let [{:keys [host port ssl? ssl-params]} opts
+        ^Socket socket (if ssl?
+                         (mk-ssl-socket host port ssl-params)
+                         (mk-socket host port))]
     (socket-callback socket callback)))
 
 (defmethod mk-server :tcp [opts callback]
