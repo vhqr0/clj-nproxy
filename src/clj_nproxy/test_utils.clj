@@ -1,7 +1,6 @@
 (ns clj-nproxy.test-utils
   "Test utils."
-  (:require [clj-nproxy.struct :as st]
-            [clj-nproxy.proxy :as proxy])
+  (:require [clj-nproxy.proxy :as proxy])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
            [java.io PipedInputStream PipedOutputStream]))
 

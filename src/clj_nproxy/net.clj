@@ -80,7 +80,7 @@
   "Make ssl socket."
   ^SSLSocket [^String host ^long port ssl-params]
   (let [^SSLSocketFactory fac (SSLSocketFactory/getDefault)
-        ^SSLSocket socket (.createSocket fac)]
+        ^SSLSocket socket (.createSocket fac host port)]
     (when-let [{:keys [sni alpn]} ssl-params]
       (let [^SSLParameters params (.getSSLParameters socket)]
         (when (some? sni)

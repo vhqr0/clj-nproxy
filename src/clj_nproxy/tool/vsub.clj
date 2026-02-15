@@ -59,7 +59,7 @@
   (merge {:type :tcp}
          (node->base-net-opts node)))
 
-(defmethod node->net-opts "ws" [{:strs [add port path host] :or {path "/"} :as node}]
+(defmethod node->net-opts "ws" [{:strs [add path host] :or {path "/"} :as node}]
   (merge {:type :ws}
          (node->base-net-opts node)
          {:path path :headers {"host" (or host add)}}))

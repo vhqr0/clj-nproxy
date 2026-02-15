@@ -41,7 +41,6 @@
 
 (def col->data-type [:timestamp :level :event :host :detail])
 (def col->data-label ["Time" "Level" "Event" "Host" "Detail"])
-(def data-type->data-level (zipmap col->data-type col->data-label))
 
 (defmulti get-display-data-from-log
   "Get display data from log."

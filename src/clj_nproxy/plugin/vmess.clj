@@ -248,7 +248,7 @@
 (defn ->req
   "Construct request."
   ^bytes [params host port]
-  (let [{:keys [key iv nonce verify padding]} params
+  (let [{:keys [key iv verify padding]} params
         plen (alength (bytes padding))
         plen+sec (+ 3 (bit-shift-left plen 4))]
     (st/pack st-req
