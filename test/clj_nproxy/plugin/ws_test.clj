@@ -6,16 +6,16 @@
 
 (deftest ws-test
   (is (some? (utils/handshake
-              (fn [{is :input-stream os :output-stream}]
+              (fn [server]
                 (ws/mk-client
-                 nil is os
+                 nil server
                  (fn [{is :input-stream os :output-stream}]
                    (proxy/mk-client
                     {:type :http} is os "example.com" 80
                     (fn [_])))))
-              (fn [{is :input-stream os :output-stream}]
+              (fn [client]
                 (ws/mk-server
-                 nil is os
+                 nil client
                  (fn [{is :input-stream os :output-stream}]
                    (proxy/mk-server
                     {:type :http} is os

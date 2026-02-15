@@ -139,8 +139,9 @@
 
 (defn mk-client
   "Make websocket client."
-  [opts ^InputStream is ^OutputStream os callback]
-  (let [{:keys [path headers] :or {path "/"}} opts
+  [opts server callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
+        {:keys [path headers] :or {path "/"}} opts
         headers (merge {"upgrade" "websocket"
                         "connection" "upgrade"
                         "sec-websocket-key" (b/bytes->base64 (b/rand 16))
@@ -158,8 +159,9 @@
 
 (defn mk-server
   "Make websocket server."
-  [opts ^InputStream is ^OutputStream os callback]
-  (let [{:keys [headers] :as req} (st/read-struct http/st-http-req is)
+  [opts client callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+        {:keys [headers] :as req} (st/read-struct http/st-http-req is)
         {:strs [upgrade sec-websocket-key]} headers]
     (if (and (= "websocket" (str/lower-case upgrade))
              (some? sec-websocket-key))
@@ -182,7 +184,7 @@
    (assoc opts :type :tcp)
    (fn [tcp-server]
      (mk-client
-      opts (:input-stream tcp-server) (:output-stream tcp-server)
+      opts tcp-server
       (fn [ws-server]
         (callback (merge tcp-server ws-server)))))))
 
@@ -191,6 +193,6 @@
    (assoc opts :type :tcp)
    (fn [tcp-client]
      (mk-server
-      opts (:input-stream tcp-client) (:output-stream tcp-client)
+      opts tcp-client
       (fn [ws-client]
         (callback (merge tcp-client ws-client)))))))
