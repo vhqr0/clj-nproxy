@@ -2,7 +2,7 @@
 
 nproxy :: 使用 Clojure 开发的代理工具。
 
-- 功能特性：
+- 功能特性
   - 界面：支持 CLI 和 GUI。
   - 协议：支持 websocket、http、socks5、trojan、vmess 协议。
   - 订阅：支持 V2rayN 格式的 vmess 节点订阅管理。
@@ -259,25 +259,25 @@ V2rayN 格式的订阅管理工具。
 
 相关链接：https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link
 
-订阅链接保存到 =.nproxy/sub.url= ：
+订阅链接保存到 =.nproxy/sub.url=
 
 #+begin_src sh
   echo https://example.com > .nproxy/sub.url
 #+end_src
 
-获取订阅内容保存到 =.nproxy/sub.txt= ：
+获取订阅内容保存到 =.nproxy/sub.txt=
 
 #+begin_src sh
   clojure -X clj-nproxy.tool.vsub/fetch
 #+end_src
 
-列出所有 vmess 节点：
+列出所有 vmess 节点
 
 #+begin_src sh
   clojure -X clj-nproxy.tool.vsub/list
 #+end_src
 
-生成出口配置保存到 =.nproxy/sub.edn= ：
+生成出口配置保存到 =.nproxy/sub.edn=
 
 #+begin_src sh
   clojure -X clj-nproxy.tool.vsub/gen
@@ -289,13 +289,13 @@ V2rayN 格式的订阅管理工具。
 
 相关连接：https://github.com/v2fly/domain-list-community
 
-dlc 仓库保存到 =.nproxy/domain-list-community/= ：
+dlc 仓库保存到 =.nproxy/domain-list-community/=
 
 #+begin_src sh
   git clone https://github.com/v2fly/domain-list-community .nproxy/domain-list-community
 #+end_src
 
-生成 tags 配置保存到 =.nproxy/tags.edn= ：
+生成 tags 配置保存到 =.nproxy/tags.edn=
 
 #+begin_src sh
   clojure -X clj-nproxy.tool.dlc/gen
