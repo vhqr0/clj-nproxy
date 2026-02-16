@@ -124,6 +124,8 @@
         (callback {:http-resp resp :input-stream is :output-stream os})
         (throw (st/data-error))))))
 
+;; limited: only accept connect method with explicit port
+
 (defmethod proxy/mk-server :http [{:keys [headers]} client callback]
   (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
         {:keys [method path] :as req} (st/read-struct st-http-req is)]
