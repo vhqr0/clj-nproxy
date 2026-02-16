@@ -1,5 +1,6 @@
 (ns clj-nproxy.proxy
-  "Proxy abstraction.")
+  "Proxy abstraction."
+  (:require [clj-nproxy.struct :as st]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -17,3 +18,10 @@
 (defmulti edn->server-opts :type)
 (defmethod edn->client-opts :default [opts] opts)
 (defmethod edn->server-opts :default [opts] opts)
+
+(defn sim-conn
+  "Simulate connection on internal pipe stream."
+  [client-opts server-opts host port client-proc server-proc]
+  (st/sim-conn
+   #(mk-client client-opts % host port client-proc)
+   #(mk-server server-opts % server-proc)))

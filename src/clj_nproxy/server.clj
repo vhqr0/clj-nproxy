@@ -3,8 +3,7 @@
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net]
-            [clj-nproxy.proxy :as proxy])
-  (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]))
+            [clj-nproxy.proxy :as proxy]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -112,15 +111,6 @@
 
 ;;; server
 
-(defn pipe
-  "Pipe between client and server."
-  [client server]
-  (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
-    (with-open [scope (StructuredTaskScope/open joiner)]
-      (.fork scope ^Runnable #(st/copy (:input-stream client) (:output-stream server)))
-      (.fork scope ^Runnable #(st/copy (:input-stream server) (:output-stream client)))
-      (.join scope))))
-
 (defn ->log
   "Construct log data."
   [level event data]
@@ -157,7 +147,7 @@
             (fn [{sinfo :peer :as server}]
               (log-fn (->info-log :pipe {:req req :client cinfo :server sinfo}))
               (try
-                (pipe client server)
+                (st/pipe client server)
                 (catch Exception error
                   (log-fn (->error-log :pipe-error error pr-error? {:req req :client cinfo :server sinfo}))))))
            (catch Exception error

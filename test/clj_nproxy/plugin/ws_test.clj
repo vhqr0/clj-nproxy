@@ -1,11 +1,11 @@
 (ns clj-nproxy.plugin.ws-test
   (:require [clojure.test :refer [deftest is]]
-            [clj-nproxy.test-utils :as utils]
+            [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]
             [clj-nproxy.plugin.ws :as ws]))
 
 (deftest ws-test
-  (is (some? (utils/handshake
+  (is (some? (st/sim-conn
               (fn [server]
                 (ws/mk-client
                  nil server

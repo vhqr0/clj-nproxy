@@ -2,7 +2,8 @@
   "Structure IO utils."
   (:refer-clojure :exclude [keys])
   (:require [clj-nproxy.bytes :as b])
-  (:import [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream]
+  (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
+           [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream PipedInputStream PipedOutputStream]
            [java.nio ByteBuffer ByteOrder]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -464,3 +465,27 @@
     (finally
       (safe-close is)
       (safe-close os))))
+
+(defn pipe
+  "Pipe between client and server."
+  [client server]
+  (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
+    (with-open [scope (StructuredTaskScope/open joiner)]
+      (.fork scope ^Runnable #(copy (:input-stream client) (:output-stream server)))
+      (.fork scope ^Runnable #(copy (:input-stream server) (:output-stream client)))
+      (.join scope))))
+
+(defn sim-conn
+  "Simulate connection on internal pipe stream."
+  [client-proc server-proc]
+  (with-open [cis (PipedInputStream.)
+              cos (PipedOutputStream.)
+              sis (PipedInputStream.)
+              sos (PipedOutputStream.)]
+    (.connect cos sis)
+    (.connect sos cis)
+    (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
+      (with-open [scope (StructuredTaskScope/open joiner)]
+        (.fork scope ^Runnable #(client-proc {:input-stream cis :output-stream cos}))
+        (.fork scope ^Runnable #(server-proc {:input-stream sis :output-stream sos}))
+        (.join scope)))))
