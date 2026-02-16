@@ -256,7 +256,7 @@
               :iv       iv
               :key      key
               :verify   verify
-              :opt      5
+              :opt      13 ; S|M|P
               :plen+sec plen+sec
               :keep     0
               :cmd      1
@@ -336,10 +336,12 @@
                   (when-not @vresp?
                     (read-resp is params)
                     (vreset! vresp? true))
-                  (let [mask (read-mask-fn)
+                  (let [plen (bit-and 0x3f (read-mask-fn))
+                        mask (read-mask-fn)
                         iv (read-iv-fn)
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
-                        edata (st/read-bytes is len)]
+                        edata (st/read-bytes is (- len plen))
+                        _ (st/read-bytes is plen)]
                     (aes128-gcm-decrypt rkey iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
@@ -351,11 +353,12 @@
         read-mask-fn (iv->read-mask-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
         write-frame-fn (fn [data]
-                         (let [mask (read-mask-fn)
+                         (let [plen (bit-and 0x3f (read-mask-fn))
+                               mask (read-mask-fn)
                                iv (read-iv-fn)
                                edata (aes128-gcm-encrypt key iv data)
-                               elen (st/pack st/st-ushort-be (bit-xor mask (alength edata)))]
-                           (.write os (b/cat elen edata))
+                               elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
+                           (.write os (b/cat elen edata (b/rand plen)))
                            (.flush os)))
         write-fn (fn [data]
                    (let [data (bytes data)]
