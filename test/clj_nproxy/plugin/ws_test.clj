@@ -10,13 +10,9 @@
                 (ws/mk-client
                  nil server
                  (fn [server]
-                   (proxy/mk-client
-                    {:type :http} server "example.com" 80
-                    (fn [_])))))
+                   (proxy/mk-client {:type :http} server "example.com" 80 (fn [_])))))
               (fn [client]
                 (ws/mk-server
                  nil client
                  (fn [client]
-                   (proxy/mk-server
-                    {:type :http} client
-                    (fn [_])))))))))
+                   (proxy/mk-server {:type :http} client (fn [_])))))))))
