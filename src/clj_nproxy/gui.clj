@@ -303,10 +303,10 @@
 
 (defn start-server
   "Start proxy server with gui."
-  [opts]
-  (let [{:keys [max-logs] :or {max-logs 1000}} opts
-        alogs (atom {})]
-    (add-tap prn)
+  [{:keys [pr-log? max-logs] :or {pr-log? true max-logs 1000} :as opts}]
+  (let [alogs (atom {})]
+    (when pr-log?
+      (add-tap prn))
     (add-tap #(swap! alogs add-to-history % max-logs))
     (cli/start-server-from-config opts)
     (start-gui alogs)

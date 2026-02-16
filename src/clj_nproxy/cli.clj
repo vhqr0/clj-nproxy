@@ -22,7 +22,8 @@
 
 (defn start-server
   "Start proxy server."
-  [opts]
-  (add-tap prn)
+  [{:keys [pr-log?] :or {pr-log? true} :as opts}]
+  (when pr-log?
+    (add-tap prn))
   (start-server-from-config opts)
   @(promise))
