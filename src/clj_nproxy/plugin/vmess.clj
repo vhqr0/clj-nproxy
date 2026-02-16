@@ -371,7 +371,6 @@
   (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
         params (->params)]
     (.write os (->ereq id params host port))
-    (.flush os)
     (callback
      {:input-stream (wrap-input-stream is params)
       :output-stream (wrap-output-stream os params)})))
