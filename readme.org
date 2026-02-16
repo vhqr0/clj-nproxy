@@ -146,7 +146,7 @@ baidu.com 及其所有子域名的 tag 为 direct，当收到这些代理请求�
 
 *** plugins
 
-默认配置下只支持 tcp 类型的网络协议和 http、socks5 类型的代理协议，其它协议需要在配置中指定插件启用：
+默认配置下只支持 tcp 类型的网络协议和 socks5 类型的代理协议，其它协议需要在配置中指定插件启用：
 
 #+begin_src clojure
   {:plugins [clj-nproxy.plugin.ws clj-nproxy.plugin.vmess]
@@ -162,6 +162,7 @@ baidu.com 及其所有子域名的 tag 为 direct，当收到这些代理请求�
 内置的插件有：
 
 - =clj-nproxy.plugin.ws= :: 提供 ws 网络协议
+- =clj-nproxy.plugin.http= :: 提供 http 代理协议
 - =clj-nproxy.plugin.trojan= :: 提供 trojan 代理协议
 - =clj-nproxy.plugin.vmess= :: 提供 vmess 代理协议
 
