@@ -10,7 +10,7 @@
            [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.security MessageDigest]
            [javax.crypto Cipher]
-           [javax.crypto.spec SecretKeySpec GCMParameterSpec]
+           [javax.crypto.spec SecretKeySpec IvParameterSpec GCMParameterSpec]
            [org.bouncycastle.crypto.digests SHAKEDigest]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -73,6 +73,34 @@
 
 (defn aesgcm-encrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/ENCRYPT_MODE))
 (defn aesgcm-decrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/DECRYPT_MODE))
+
+(defn chacha20poly1305-crypt
+  "Encryt or decrypt bytes with ChaCha20-Poly1305."
+  ^bytes [^bytes key ^bytes iv ^bytes b ^bytes aad mode]
+  (let [cipher (Cipher/getInstance "ChaCha20-Poly1305")
+        key (SecretKeySpec. key "AES")
+        iv (IvParameterSpec. iv)]
+    (.init cipher (int mode) key iv)
+    (when (some? aad)
+      (.updateAAD cipher aad))
+    (.doFinal cipher b)))
+
+(defn chacha20poly1305-encrypt ^bytes [key iv b & [aad]] (chacha20poly1305-crypt key iv b aad Cipher/ENCRYPT_MODE))
+(defn chacha20poly1305-decrypt ^bytes [key iv b & [aad]] (chacha20poly1305-crypt key iv b aad Cipher/DECRYPT_MODE))
+
+(defn aead-encrypt
+  "Aead encrypt based on sec."
+  ^bytes [sec key iv b & [aad]]
+  (case sec
+    :aesgcm           (aesgcm-encrypt key iv b aad)
+    :chacha20poly1305 (chacha20poly1305-encrypt key iv b aad)))
+
+(defn aead-decrypt
+  "Aead decrypt based on sec."
+  ^bytes [sec key iv b & [aad]]
+  (case sec
+    :aesgcm           (aesgcm-decrypt key iv b aad)
+    :chacha20poly1305 (chacha20poly1305-decrypt key iv b aad)))
 
 ;;;; shake
 
@@ -190,7 +218,7 @@
 
 (defn ->params
   "Generate params."
-  [{:keys [use-mask? use-padding?] :or {use-mask? true use-padding? true}}]
+  [{:keys [sec use-mask? use-padding?] :or {sec :aesgcm use-mask? true use-padding? true}}]
   (let [nonce (b/rand 8)
         key (b/rand 16)
         iv (b/rand 16)
@@ -199,7 +227,7 @@
         verify (rand-int 256)
         padding (b/rand (rand-int 16))]
     {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
-     :use-mask? use-mask? :use-padding? use-padding?}))
+     :sec sec :use-mask? use-mask? :use-padding? use-padding?}))
 
 (defn ->eaid
   "Construct eaid (encrypted auth id) from id."
@@ -228,10 +256,11 @@
 (defn ->req
   "Construct request."
   ^bytes [params host port]
-  (let [{:keys [key iv verify padding use-mask? use-padding?]} params
+  (let [{:keys [key iv verify padding sec use-mask? use-padding?]} params
+        opt (+ 1 (if use-mask? 4 0) (if use-padding? 8 0))
+        sec (case sec :aesgcm 3 :chacha20poly1305 4)
         plen (alength (bytes padding))
-        plen+sec (+ 3 (bit-shift-left plen 4))
-        opt (+ 1 (if use-mask? 4 0) (if use-padding? 8 0))]
+        plen+sec (+ sec (bit-shift-left plen 4))]
     (st/pack st-req
              {:ver      1
               :iv       iv
@@ -291,6 +320,19 @@
 
 ;;;; stream
 
+(defn chacha20poly1305-key
+  "Convert base key to ChaCha20-Poly1305 key."
+  ^bytes [^bytes key]
+  (let [key (b/md5 key)]
+    (b/cat key (b/md5 key))))
+
+(defn sec-key
+  "Convert base key to key based on sec."
+  ^bytes [sec ^bytes key]
+  (case sec
+    :aesgcm key
+    :chacha20poly1305 (chacha20poly1305-key key)))
+
 (defn iv->read-shake-fn
   "Convert base iv to read shake fn."
   [iv]
@@ -311,7 +353,8 @@
 (defn wrap-input-stream
   "Wrap vmess over input stream."
   ^InputStream [^InputStream is params key iv pre-fn]
-  (let [{:keys [use-mask? use-padding?]} params
+  (let [{:keys [sec use-mask? use-padding?]} params
+        key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
         vpre (volatile! pre-fn)
@@ -323,14 +366,15 @@
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
                         edata (st/read-bytes is (- len plen))
                         _ (when-not (zero? plen) (st/read-bytes is plen))]
-                    (aesgcm-decrypt key iv edata)))]
+                    (aead-decrypt sec key iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
   ^OutputStream [^OutputStream os params key iv pre-fn]
-  (let [{:keys [use-mask? use-padding?]} params
+  (let [{:keys [sec use-mask? use-padding?]} params
+        key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
         vpre (volatile! pre-fn)
@@ -339,7 +383,7 @@
                          (let [plen (if-not use-padding? 0 (bit-and 0x3f (read-shake-fn)))
                                mask (if-not use-mask? 0 (read-shake-fn))
                                iv (read-iv-fn)
-                               edata (aesgcm-encrypt key iv data)
+                               edata (aead-encrypt sec key iv data)
                                elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
                            (.write os (b/cat elen edata (b/rand plen)))
                            (.flush os)))
