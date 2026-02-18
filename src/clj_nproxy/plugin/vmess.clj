@@ -190,7 +190,7 @@
 
 (defn ->params
   "Generate params."
-  []
+  [{:keys [use-mask? use-padding?] :or {use-mask? true use-padding? true}}]
   (let [nonce (b/rand 8)
         key (b/rand 16)
         iv (b/rand 16)
@@ -198,8 +198,8 @@
         riv (b/copy-of (b/sha256 iv) 16)
         verify (rand-int 256)
         padding (b/rand (rand-int 16))]
-    {:nonce nonce :key key :iv iv :rkey rkey :riv riv
-     :verify verify :padding padding}))
+    {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
+     :use-mask? use-mask? :use-padding? use-padding?}))
 
 (defn ->eaid
   "Construct eaid (encrypted auth id) from id."
@@ -228,15 +228,16 @@
 (defn ->req
   "Construct request."
   ^bytes [params host port]
-  (let [{:keys [key iv verify padding]} params
+  (let [{:keys [key iv verify padding use-mask? use-padding?]} params
         plen (alength (bytes padding))
-        plen+sec (+ 3 (bit-shift-left plen 4))]
+        plen+sec (+ 3 (bit-shift-left plen 4))
+        opt (+ 1 (if use-mask? 4 0) (if use-padding? 8 0))]
     (st/pack st-req
              {:ver      1
               :iv       iv
               :key      key
               :verify   verify
-              :opt      13 ; S|M|P
+              :opt      opt
               :plen+sec plen+sec
               :keep     0
               :cmd      1
@@ -309,32 +310,34 @@
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
-  ^InputStream [^InputStream is key iv pre-fn]
-  (let [read-shake-fn (iv->read-shake-fn iv)
+  ^InputStream [^InputStream is params key iv pre-fn]
+  (let [{:keys [use-mask? use-padding?]} params
+        read-shake-fn (iv->read-shake-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
         vpre (volatile! pre-fn)
         read-fn (fn []
                   (when-let [pre-fn @vpre] (pre-fn) (vreset! vpre nil))
-                  (let [plen (bit-and 0x3f (read-shake-fn))
-                        mask (read-shake-fn)
+                  (let [plen (if-not use-padding? 0 (bit-and 0x3f (read-shake-fn)))
+                        mask (if-not use-mask? 0 (read-shake-fn))
                         iv (read-iv-fn)
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
                         edata (st/read-bytes is (- len plen))
-                        _ (st/read-bytes is plen)]
+                        _ (when-not (zero? plen) (st/read-bytes is plen))]
                     (aesgcm-decrypt key iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
-  ^OutputStream [^OutputStream os key iv pre-fn]
-  (let [read-shake-fn (iv->read-shake-fn iv)
+  ^OutputStream [^OutputStream os params key iv pre-fn]
+  (let [{:keys [use-mask? use-padding?]} params
+        read-shake-fn (iv->read-shake-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
         vpre (volatile! pre-fn)
         write-frame-fn (fn [data]
                          (when-let [pre-fn @vpre] (pre-fn) (vreset! vpre nil))
-                         (let [plen (bit-and 0x3f (read-shake-fn))
-                               mask (read-shake-fn)
+                         (let [plen (if-not use-padding? 0 (bit-and 0x3f (read-shake-fn)))
+                               mask (if-not use-mask? 0 (read-shake-fn))
                                iv (read-iv-fn)
                                edata (aesgcm-encrypt key iv data)
                                elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
@@ -350,14 +353,14 @@
     (BufferedOutputStream.
      (st/write-fn->output-stream write-fn close-fn))))
 
-(defmethod proxy/mk-client :vmess [{:keys [id]} server host port callback]
+(defmethod proxy/mk-client :vmess [{:keys [id] :as opts} server host port callback]
   (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
-        {:keys [key iv rkey riv] :as params} (->params)
+        {:keys [key iv rkey riv] :as params} (->params opts)
         pre-read-fn #(read-resp is params)
         pre-write-fn #(.write os (->ereq id params host port))]
     (callback
-     {:input-stream (wrap-input-stream is rkey riv pre-read-fn)
-      :output-stream (wrap-output-stream os key iv pre-write-fn)})))
+     {:input-stream (wrap-input-stream is params rkey riv pre-read-fn)
+      :output-stream (wrap-output-stream os params key iv pre-write-fn)})))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))
