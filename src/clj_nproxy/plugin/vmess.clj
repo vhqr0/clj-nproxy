@@ -74,7 +74,7 @@
 (defn aesgcm-encrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/ENCRYPT_MODE))
 (defn aesgcm-decrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/DECRYPT_MODE))
 
-;;;; mask generator
+;;;; shake
 
 (defn shake128-read-fn
   "Construct shake128 read fn."
@@ -352,10 +352,12 @@
 
 (defmethod proxy/mk-client :vmess [{:keys [id]} server host port callback]
   (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
-        {:keys [key iv rkey riv] :as params} (->params)]
+        {:keys [key iv rkey riv] :as params} (->params)
+        pre-read-fn #(read-resp is params)
+        pre-write-fn #(.write os (->ereq id params host port))]
     (callback
-     {:input-stream (wrap-input-stream is rkey riv #(read-resp is params))
-      :output-stream (wrap-output-stream os key iv #(.write os (->ereq id params host port)))})))
+     {:input-stream (wrap-input-stream is rkey riv pre-read-fn)
+      :output-stream (wrap-output-stream os key iv pre-write-fn)})))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))
