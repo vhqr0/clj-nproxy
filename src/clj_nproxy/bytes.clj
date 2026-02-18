@@ -2,7 +2,7 @@
   "Bytes utils."
   (:refer-clojure :exclude [cat compare rand])
   (:import [java.util Arrays Random HexFormat Base64]
-           [java.security SecureRandom]))
+           [java.security SecureRandom MessageDigest]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -84,3 +84,22 @@
   "Convert bytes to base64 string."
   ^String [^bytes b]
   (String. (.encode (Base64/getEncoder) b)))
+
+(defn digest
+  "Message digest."
+  ^bytes [^String algo ^bytes b]
+  (let [d (MessageDigest/getInstance algo)]
+    (.digest d b)))
+
+(def md5 (partial digest "MD5"))
+(def sha1 (partial digest "SHA-1"))
+(def sha224 (partial digest "SHA-224"))
+(def sha256 (partial digest "SHA-256"))
+(def sha384 (partial digest "SHA-384"))
+(def sha512 (partial digest "SHA-512"))
+
+^:rct/test
+(comment
+  (bytes->hex (md5 (.getBytes "hello"))) ; => "5d41402abc4b2a76b9719d911017c592"
+  (bytes->hex (sha256 (.getBytes "hello"))) ; => "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  )

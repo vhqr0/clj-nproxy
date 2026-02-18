@@ -47,23 +47,6 @@
   (b/bytes->hex (fnv1a (.getBytes "hello"))) ; => "4f9f2cab"
   )
 
-;;;; digest
-
-(defn digest
-  "Message digest."
-  ^bytes [^String algo ^bytes b]
-  (let [d (MessageDigest/getInstance algo)]
-    (.digest d b)))
-
-(defn md5 ^bytes [b] (digest "MD5" b))
-(defn sha256 ^bytes [b] (digest "SHA-256" b))
-
-^:rct/test
-(comment
-  (b/bytes->hex (md5 (.getBytes "hello"))) ; => "5d41402abc4b2a76b9719d911017c592"
-  (b/bytes->hex (sha256 (.getBytes "hello"))) ; => "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-  )
-
 ;;;; cipher
 
 (defn aes128-ecb-crypt
@@ -202,9 +185,9 @@
 (defn ->id
   "Construct expanded vmess id from uuid."
   [uuid]
-  (let [cmd-key (md5 (b/cat
-                      (b/hex->bytes (str/replace uuid "-" ""))
-                      (b/str->bytes vmess-uuid)))
+  (let [cmd-key (b/md5 (b/cat
+                        (b/hex->bytes (str/replace uuid "-" ""))
+                        (b/str->bytes vmess-uuid)))
         auth-key (vkdf :aid 16 cmd-key)]
     {:uuid uuid :cmd-key cmd-key :auth-key auth-key}))
 
@@ -214,8 +197,8 @@
   (let [nonce (b/rand 8)
         key (b/rand 16)
         iv (b/rand 16)
-        rkey (b/copy-of (sha256 key) 16)
-        riv (b/copy-of (sha256 iv) 16)
+        rkey (b/copy-of (b/sha256 key) 16)
+        riv (b/copy-of (b/sha256 iv) 16)
         verify (rand-int 256)
         padding (b/rand (rand-int 16))]
     {:nonce nonce :key key :iv iv :rkey rkey :riv riv

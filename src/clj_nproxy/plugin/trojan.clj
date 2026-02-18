@@ -5,8 +5,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]
             [clj-nproxy.plugin.socks5 :as socks5])
-  (:import [java.io InputStream OutputStream]
-           [java.security MessageDigest]))
+  (:import [java.io InputStream OutputStream]))
 
 (def st-req
   (st/keys
@@ -31,8 +30,7 @@
 (defn trojan-auth
   "Get trojan auth."
   ^String [^String password]
-  (let [d (MessageDigest/getInstance "SHA-224")]
-    (b/bytes->hex (.digest d (b/str->bytes password)))))
+  (-> password b/str->bytes b/sha224 b/bytes->hex))
 
 ^:rct/test
 (comment

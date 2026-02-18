@@ -5,8 +5,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net]
             [clj-nproxy.plugin.http :as http])
-  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
-           [java.security MessageDigest]))
+  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -129,8 +128,7 @@
 (defn key->accept
   "Get accept from key."
   ^String [^String key]
-  (let [d (MessageDigest/getInstance "SHA-1")]
-    (b/bytes->base64 (.digest d (b/str->bytes (str key ws-uuid))))))
+  (-> (str key ws-uuid) b/str->bytes b/sha1 b/bytes->base64))
 
 ^:rct/test
 (comment
