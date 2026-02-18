@@ -309,32 +309,30 @@
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
-  ^InputStream [^InputStream is params]
-  (let [{:keys [rkey riv]} params
-        read-shake-fn (iv->read-shake-fn riv)
-        read-iv-fn (iv->read-iv-fn riv)
-        vresp? (volatile! false)
+  ^InputStream [^InputStream is key iv pre-fn]
+  (let [read-shake-fn (iv->read-shake-fn iv)
+        read-iv-fn (iv->read-iv-fn iv)
+        vpre (volatile! pre-fn)
         read-fn (fn []
-                  (when-not @vresp?
-                    (read-resp is params)
-                    (vreset! vresp? true))
+                  (when-let [pre-fn @vpre] (pre-fn) (vreset! vpre nil))
                   (let [plen (bit-and 0x3f (read-shake-fn))
                         mask (read-shake-fn)
                         iv (read-iv-fn)
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
                         edata (st/read-bytes is (- len plen))
                         _ (st/read-bytes is plen)]
-                    (aesgcm-decrypt rkey iv edata)))]
+                    (aesgcm-decrypt key iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
-  ^OutputStream [^OutputStream os params]
-  (let [{:keys [key iv]} params
-        read-shake-fn (iv->read-shake-fn iv)
+  ^OutputStream [^OutputStream os key iv pre-fn]
+  (let [read-shake-fn (iv->read-shake-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
+        vpre (volatile! pre-fn)
         write-frame-fn (fn [data]
+                         (when-let [pre-fn @vpre] (pre-fn) (vreset! vpre nil))
                          (let [plen (bit-and 0x3f (read-shake-fn))
                                mask (read-shake-fn)
                                iv (read-iv-fn)
@@ -354,11 +352,10 @@
 
 (defmethod proxy/mk-client :vmess [{:keys [id]} server host port callback]
   (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
-        params (->params)]
-    (.write os (->ereq id params host port))
+        {:keys [key iv rkey riv] :as params} (->params)]
     (callback
-     {:input-stream (wrap-input-stream is params)
-      :output-stream (wrap-output-stream os params)})))
+     {:input-stream (wrap-input-stream is rkey riv #(read-resp is params))
+      :output-stream (wrap-output-stream os key iv #(.write os (->ereq id params host port)))})))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))
