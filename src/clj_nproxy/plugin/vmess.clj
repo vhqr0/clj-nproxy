@@ -293,13 +293,15 @@
 
 ;;;; stream
 
-(defn iv->read-mask-fn
+(defn iv->read-shake-fn
+  "Convert base iv to read shake fn."
   [iv]
   (let [read-fn (shake128-read-fn iv)]
     (fn []
       (st/unpack st/st-ushort-be (read-fn 2)))))
 
 (defn iv->read-iv-fn
+  "Convert base iv to read iv fn."
   [iv]
   (let [vctr (volatile! 0)
         iv (b/copy-of-range iv 2 12)]
@@ -312,15 +314,15 @@
   "Wrap vmess over input stream."
   ^InputStream [^InputStream is params]
   (let [{:keys [rkey riv]} params
-        read-mask-fn (iv->read-mask-fn riv)
+        read-shake-fn (iv->read-shake-fn riv)
         read-iv-fn (iv->read-iv-fn riv)
         vresp? (volatile! false)
         read-fn (fn []
                   (when-not @vresp?
                     (read-resp is params)
                     (vreset! vresp? true))
-                  (let [plen (bit-and 0x3f (read-mask-fn))
-                        mask (read-mask-fn)
+                  (let [plen (bit-and 0x3f (read-shake-fn))
+                        mask (read-shake-fn)
                         iv (read-iv-fn)
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
                         edata (st/read-bytes is (- len plen))
@@ -333,11 +335,11 @@
   "Wrap vmess over output stream."
   ^OutputStream [^OutputStream os params]
   (let [{:keys [key iv]} params
-        read-mask-fn (iv->read-mask-fn iv)
+        read-shake-fn (iv->read-shake-fn iv)
         read-iv-fn (iv->read-iv-fn iv)
         write-frame-fn (fn [data]
-                         (let [plen (bit-and 0x3f (read-mask-fn))
-                               mask (read-mask-fn)
+                         (let [plen (bit-and 0x3f (read-shake-fn))
+                               mask (read-shake-fn)
                                iv (read-iv-fn)
                                edata (aes128-gcm-encrypt key iv data)
                                elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
