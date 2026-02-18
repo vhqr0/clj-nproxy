@@ -1,5 +1,5 @@
 (ns clj-nproxy.plugin.vmess
-  "Vmess proxy client impl.
+  "Vmess proxy impl.
   - vmess legacy: https://github.com/v2fly/v2fly-github-io/blob/master/docs/developer/protocols/vmess.md
   - vmess aead: https://github.com/v2fly/v2fly-github-io/issues/20/"
   (:require [clojure.string :as str]
@@ -7,7 +7,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy])
   (:import [java.util.zip CRC32]
-           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
+           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream ByteArrayInputStream]
            [java.security MessageDigest]
            [javax.crypto Cipher]
            [javax.crypto.spec SecretKeySpec IvParameterSpec GCMParameterSpec]
@@ -292,6 +292,50 @@
                (aesgcm-encrypt key iv req+padding+fnv1a eaid))]
     (b/cat eaid elen nonce ereq)))
 
+(defn read-req
+  "Read request from stream."
+  [is id]
+  (let [{:keys [cmd-key auth-key]} id
+        eaid (st/read-bytes is 16)
+        ts+nonce+crc32 (aesecb-decrypt auth-key eaid)]
+    (if (zero? (b/compare
+                (b/copy-of-range ts+nonce+crc32 12 16)
+                (crc32 (b/copy-of ts+nonce+crc32 12))))
+      (let [ts-diff (- (long (/ (System/currentTimeMillis) 1000))
+                       (st/unpack st/st-long-be (b/copy-of ts+nonce+crc32 8)))]
+        (if (<= (abs ts-diff) 30)
+          (let [elen (st/read-bytes is 18)
+                nonce (st/read-bytes is 8)
+                len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
+                          iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])]
+                      (st/unpack st/st-ushort-be (aesgcm-decrypt key iv elen eaid)))
+                ereq (st/read-bytes is (+ 16 len))
+                req+padding+fnv1a (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
+                                        iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
+                                    (aesgcm-decrypt key iv ereq eaid))]
+            (if (zero? (b/compare
+                        (b/copy-of-range req+padding+fnv1a (- len 4) len)
+                        (fnv1a (b/copy-of req+padding+fnv1a (- len 4)))))
+              (let [bais (ByteArrayInputStream. (b/copy-of req+padding+fnv1a (- len 4)))
+                    {:keys [ver iv key verify opt plen+sec cmd port host]} (st/read-struct st-req bais)]
+                (if (and (= ver 1) (= cmd 1) (zero? (bit-and 0xf2 opt)) (bit-test opt 0))
+                  (let [use-mask? (bit-test opt 2)
+                        use-padding? (bit-test opt 3)
+                        sec (case (bit-and 0xf plen+sec) 3 :aesgcm 4 :chacha20poly1305)
+                        plen (bit-shift-right plen+sec 4)
+                        padding (st/read-bytes bais plen)]
+                    (if (zero? (.available bais))
+                      (let [rkey (b/copy-of (b/sha256 key) 16)
+                            riv (b/copy-of (b/sha256 iv) 16)
+                            params {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
+                                    :sec sec :use-mask? use-mask? :use-padding? use-padding?}]
+                        [host port params eaid])
+                      (throw (st/data-error))))
+                  (throw (st/data-error))))
+              (throw (st/data-error))))
+          (throw (st/data-error))))
+      (throw (st/data-error)))))
+
 ;;;; resp
 
 (def st-resp
@@ -300,6 +344,20 @@
    :opt st/st-ubyte
    :cmd st/st-ubyte
    :data (st/->st-var-bytes st/st-ubyte)))
+
+(defn ->eresp
+  "Construct encrypted response."
+  ^bytes [params]
+  (let [{:keys [verify rkey riv]} params
+        resp (st/pack st-resp {:verify verify :opt 0 :cmd 0 :data (byte-array 0)})
+        eresp (let [key (vkdf :resp-key 16 rkey)
+                    iv (vkdf :resp-iv 12 riv)]
+                (aesgcm-encrypt key iv resp))
+        elen (let [key (vkdf :resp-len-key 16 rkey)
+                   iv (vkdf :resp-len-iv 12 riv)
+                   b (st/pack st/st-ushort-be (alength resp))]
+               (aesgcm-encrypt key iv b))]
+    (b/cat elen eresp)))
 
 (defn read-resp
   "Read response from stream."
@@ -352,7 +410,7 @@
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
-  ^InputStream [^InputStream is params key iv pre-fn]
+  ^InputStream [^InputStream is params key iv & [pre-fn]]
   (let [{:keys [sec use-mask? use-padding?]} params
         key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
@@ -372,7 +430,7 @@
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
-  ^OutputStream [^OutputStream os params key iv pre-fn]
+  ^OutputStream [^OutputStream os params key iv & [pre-fn]]
   (let [{:keys [sec use-mask? use-padding?]} params
         key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
@@ -406,5 +464,16 @@
      {:input-stream (wrap-input-stream is params rkey riv pre-read-fn)
       :output-stream (wrap-output-stream os params key iv pre-write-fn)})))
 
+(defmethod proxy/mk-server :vmess [{:keys [id]} client callback]
+  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+        [host port {:keys [key iv rkey riv] :as params} _eaid] (read-req is id)
+        pre-write-fn #(.write os (->eresp params))]
+    (callback
+     {:input-stream (wrap-input-stream is params key iv)
+      :output-stream (wrap-output-stream os params rkey riv pre-write-fn)})))
+
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
+  (assoc opts :id (->id uuid)))
+
+(defmethod proxy/edn->server-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))

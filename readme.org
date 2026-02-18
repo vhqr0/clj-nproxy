@@ -53,6 +53,7 @@ nproxy :: 使用 Clojure 开发的代理工具。
 
 - http :: ={:type :http}=
 - trojan :: ={:type :trojan :password "CHANGEIT"}=
+- vmess :: ={:type :vmess :uuid "CHANGEIT"}=
 
 使用 multi 类型的入口可以同时监听多个端口：
 
