@@ -49,33 +49,30 @@
 
 ;;;; cipher
 
-(defn aes128-ecb-crypt
-  "Encrypt or decrypt bytes with AES128 ECB."
+(defn aesecb-crypt
+  "Encrypt or decrypt bytes with AESECB."
   ^bytes [^bytes key ^bytes b mode]
   (let [cipher (Cipher/getInstance "AES/ECB/NoPadding")
         key (SecretKeySpec. key "AES")]
     (.init cipher (int mode) key)
     (.doFinal cipher b)))
 
-(defn aes128-ecb-encrypt ^bytes [key b] (aes128-ecb-crypt key b Cipher/ENCRYPT_MODE))
-(defn aes128-ecb-decrypt ^bytes [key b] (aes128-ecb-crypt key b Cipher/DECRYPT_MODE))
+(defn aesecb-encrypt ^bytes [key b] (aesecb-crypt key b Cipher/ENCRYPT_MODE))
+(defn aesecb-decrypt ^bytes [key b] (aesecb-crypt key b Cipher/DECRYPT_MODE))
 
-(defn aes128-gcm-crypt
-  "Encryt or decrypt bytes with AES128 GCM."
+(defn aesgcm-crypt
+  "Encryt or decrypt bytes with AESGCM."
   ^bytes [^bytes key ^bytes iv ^bytes b ^bytes aad mode]
   (let [cipher (Cipher/getInstance "AES/GCM/NoPadding")
         key (SecretKeySpec. key "AES")
         iv (GCMParameterSpec. 128 iv)]
     (.init cipher (int mode) key iv)
-    (.updateAAD cipher aad)
+    (when (some? aad)
+      (.updateAAD cipher aad))
     (.doFinal cipher b)))
 
-(defn aes128-gcm-encrypt
-  (^bytes [key iv b] (aes128-gcm-encrypt key iv b (byte-array 0)))
-  (^bytes [key iv b aad] (aes128-gcm-crypt key iv b aad Cipher/ENCRYPT_MODE)))
-(defn aes128-gcm-decrypt
-  (^bytes [key iv b] (aes128-gcm-decrypt key iv b (byte-array 0)))
-  (^bytes [key iv b aad] (aes128-gcm-crypt key iv b aad Cipher/DECRYPT_MODE)))
+(defn aesgcm-encrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/ENCRYPT_MODE))
+(defn aesgcm-decrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/DECRYPT_MODE))
 
 ;;;; mask generator
 
@@ -212,7 +209,7 @@
         nonce (b/rand 4)
         ts+nonce (b/cat (st/pack st/st-long-be ts) nonce)
         ts+nonce+crc32 (b/cat ts+nonce (crc32 ts+nonce))]
-    (aes128-ecb-encrypt auth-key ts+nonce+crc32)))
+    (aesecb-encrypt auth-key ts+nonce+crc32)))
 
 (def st-req
   (st/keys
@@ -259,10 +256,10 @@
         elen (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
                    b (st/pack st/st-ushort-be (alength req+padding+fnv1a))]
-               (aes128-gcm-encrypt key iv b eaid))
+               (aesgcm-encrypt key iv b eaid))
         ereq (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
-               (aes128-gcm-encrypt key iv req+padding+fnv1a eaid))]
+               (aesgcm-encrypt key iv req+padding+fnv1a eaid))]
     (b/cat eaid elen nonce ereq)))
 
 ;;;; resp
@@ -282,12 +279,12 @@
         len (st/unpack st/st-ushort-be
                        (let [key (vkdf :resp-len-key 16 rkey)
                              iv (vkdf :resp-len-iv 12 riv)]
-                         (aes128-gcm-decrypt key iv elen)))
+                         (aesgcm-decrypt key iv elen)))
         eresp (st/read-bytes is (+ 16 len))
         resp (st/unpack st-resp
                         (let [key (vkdf :resp-key 16 rkey)
                               iv (vkdf :resp-iv 12 riv)]
-                          (aes128-gcm-decrypt key iv eresp)))]
+                          (aesgcm-decrypt key iv eresp)))]
     (when-not (= verify (:verify resp))
       (throw (st/data-error)))))
 
@@ -327,7 +324,7 @@
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
                         edata (st/read-bytes is (- len plen))
                         _ (st/read-bytes is plen)]
-                    (aes128-gcm-decrypt rkey iv edata)))]
+                    (aesgcm-decrypt rkey iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(.close is)))))
 
@@ -341,7 +338,7 @@
                          (let [plen (bit-and 0x3f (read-shake-fn))
                                mask (read-shake-fn)
                                iv (read-iv-fn)
-                               edata (aes128-gcm-encrypt key iv data)
+                               edata (aesgcm-encrypt key iv data)
                                elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
                            (.write os (b/cat elen edata (b/rand plen)))
                            (.flush os)))
