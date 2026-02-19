@@ -89,6 +89,28 @@
   [st unpack-fn pack-fn]
   (->WrapStruct st unpack-fn pack-fn))
 
+(defn wrap-struct
+  "Wrap struct pack/unpack around bytes struct."
+  [st wrap-st]
+  (-> st
+      (wrap
+       (partial unpack wrap-st)
+       (partial pack wrap-st))))
+
+(defn wrap-many-struct
+  "Wrap struct many pack/unpck around bytes struct."
+  [st wrap-st]
+  (-> st
+      (wrap
+       (partial unpack-many wrap-st)
+       (partial pack-many wrap-st))))
+
+^:rct/test
+(comment
+  (seq (pack (wrap-many-struct (->st-var-bytes st-ubyte) st-ushort-be) [1 2])) ; => [4 0 1 0 2]
+  (unpack (wrap-many-struct (->st-var-bytes st-ubyte) st-ushort-be) (byte-array [4 0 1 0 2])) ; => [1 2]
+  )
+
 (defn read-tuple
   "Read tuple from stream."
   [^InputStream is sts]
