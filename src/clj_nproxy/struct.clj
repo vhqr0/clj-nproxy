@@ -181,36 +181,65 @@
   (unpack (keys :a st-ubyte :b st-ubyte) (byte-array [1 2])) ; => {:a 1 :b 2}
   )
 
+(defn read-coll
+  "Read coll from stream."
+  [^InputStream is len st]
+  (loop [data [] n len]
+    (if (<= n 0)
+      data
+      (let [data (conj data (read-struct st is))]
+        (recur data (dec n))))))
+
+(defn write-coll
+  "Write coll to stream."
+  [^OutputStream os st data]
+  (run! (partial write-struct st os) data))
+
+(defrecord CollStruct [len st]
+  Struct
+  (read-struct [_ is] (read-coll is len st))
+  (write-struct [_ os data]
+    (if (= len (count data))
+      (write-coll os st data)
+      (throw (data-error)))))
+
+(defn coll-of
+  "Construct coll struct."
+  [len st]
+  (->CollStruct len st))
+
+^:rct/test
+(comment
+  (seq (pack (coll-of 2 st-ushort-be) [1 2])) ; => [0 1 0 2]
+  (unpack (coll-of 2 st-ushort-be) (byte-array [0 1 0 2])) ; => [1 2]
+  )
+
 (defn read-var-coll
   "Read var coll from stream."
   [^InputStream is st-len st]
   (let [len (read-struct st-len is)]
-    (loop [data [] n len]
-      (if (<= n 0)
-        data
-        (let [data (conj data (read-struct st is))]
-          (recur data (dec n)))))))
+    (read-coll is len st)))
 
 (defn write-var-coll
   "Write var coll to stream."
   [^OutputStream os st-len st data]
   (write-struct st-len os (count data))
-  (run! (partial write-struct st os) data))
+  (write-coll os st data))
 
 (defrecord VarCollStruct [st-len st]
   Struct
   (read-struct [_ is] (read-var-coll is st-len st))
   (write-struct [_ os data] (write-var-coll os st-len st data)))
 
-(defn ->st-var-coll
+(defn var-coll-of
   "Construct var coll struct."
   [st-len st]
   (->VarCollStruct st-len st))
 
 ^:rct/test
 (comment
-  (seq (pack (->st-var-coll st-ubyte st-ushort-be) [1 2])) ; => [2 0 1 0 2]
-  (unpack (->st-var-coll st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
+  (seq (pack (var-coll-of st-ubyte st-ushort-be) [1 2])) ; => [2 0 1 0 2]
+  (unpack (var-coll-of st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
   )
 
 ;;; byte
