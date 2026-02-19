@@ -1,8 +1,7 @@
 (ns clj-nproxy.plugin.socks5
   (:require [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy])
-  (:import [java.io InputStream OutputStream]
-           [java.net InetAddress]))
+  (:import [java.net InetAddress]))
 
 (def st-str (-> (st/->st-var-bytes st/st-ubyte) st/wrap-str))
 
