@@ -180,15 +180,15 @@
   (read-struct [_ is] (read-var-coll is st-len st))
   (write-struct [_ os data] (write-var-coll os st-len st data)))
 
-(defn ->var-coll
+(defn ->st-var-coll
   "Construct var coll struct."
   [st-len st]
   (->VarCollStruct st-len st))
 
 ^:rct/test
 (comment
-  (seq (pack (->var-coll st-ubyte st-ushort-be) [1 2])) ; => [2 0 1 0 2]
-  (unpack (->var-coll st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
+  (seq (pack (->st-var-coll st-ubyte st-ushort-be) [1 2])) ; => [2 0 1 0 2]
+  (unpack (->st-var-coll st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
   )
 
 ;;; byte
