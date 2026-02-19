@@ -249,43 +249,6 @@
   (unpack (var-coll-of st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
   )
 
-;;; byte
-
-(defn read-ubyte
-  "Read unsigned byte from stream."
-  ^long [^InputStream is]
-  (let [n (.read is)]
-    (if (= -1 n)
-      (throw (eof-error))
-      n)))
-
-(defn read-byte
-  "Read byte from stream."
-  [^InputStream is]
-  (unchecked-byte (read-ubyte is)))
-
-(defrecord ByteStruct []
-  Struct
-  (read-struct [_ is] (read-byte is))
-  (write-struct [_ os i] (.write ^OutputStream os (byte i))))
-
-(defrecord UByteStruct []
-  Struct
-  (read-struct [_ is] (read-ubyte is))
-  (write-struct [_ os i] (.write ^OutputStream os (unchecked-byte i))))
-
-(def st-byte (->ByteStruct))
-(def st-ubyte (->UByteStruct))
-
-^:rct/test
-(comment
-  (seq (pack st-byte 127)) ; => [127]
-  (seq (pack st-byte -128)) ; => [-128]
-  (seq (pack st-ubyte 255)) ; => [-1]
-  (unpack st-byte (byte-array [-1])) ; => -1
-  (unpack st-ubyte (byte-array [-1])) ; => 255
-  )
-
 ;;; bytes
 
 (defn read-bytes
@@ -339,7 +302,7 @@
           (.write os (aget pb 0))
           (let [npb (byte-array len)]
             (System/arraycopy pb 1 npb 0 (dec len))
-            (aset npb (dec len) (unchecked-byte (read-byte is)))
+            (aset npb (dec len) (unchecked-byte (.read is)))
             (recur npb)))))))
 
 (defrecord DelimitedBytesStruct [^bytes delim]
@@ -353,6 +316,43 @@
   (->DelimitedBytesStruct delim))
 
 ;;; number
+
+;;;; byte
+
+(defn read-ubyte
+  "Read unsigned byte from stream."
+  ^long [^InputStream is]
+  (let [n (.read is)]
+    (if (= -1 n)
+      (throw (eof-error))
+      n)))
+
+(defn read-byte
+  "Read byte from stream."
+  [^InputStream is]
+  (unchecked-byte (read-ubyte is)))
+
+(defrecord ByteStruct []
+  Struct
+  (read-struct [_ is] (read-byte is))
+  (write-struct [_ os i] (.write ^OutputStream os (byte i))))
+
+(defrecord UByteStruct []
+  Struct
+  (read-struct [_ is] (read-ubyte is))
+  (write-struct [_ os i] (.write ^OutputStream os (unchecked-byte i))))
+
+(def st-byte (->ByteStruct))
+(def st-ubyte (->UByteStruct))
+
+^:rct/test
+(comment
+  (seq (pack st-byte 127)) ; => [127]
+  (seq (pack st-byte -128)) ; => [-128]
+  (seq (pack st-ubyte 255)) ; => [-1]
+  (unpack st-byte (byte-array [-1])) ; => -1
+  (unpack st-ubyte (byte-array [-1])) ; => 255
+  )
 
 ;;;; number
 
