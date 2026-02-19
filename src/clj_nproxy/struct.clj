@@ -77,6 +77,13 @@
       (write-struct st os data))
     (.toByteArray os)))
 
+(defrecord NullStruct []
+  Struct
+  (read-struct [_ _is])
+  (write-struct [_ _os _data]))
+
+(def st-null (->NullStruct))
+
 ;;; combinators
 
 (defrecord WrapStruct [st unpack-fn pack-fn]
