@@ -16,7 +16,7 @@
         (proxy/edn->client-opts (merge {:type :vmess :uuid uuid} opts))
         server "example.com" 80
         (fn [{is :input-stream os :output-stream}]
-          (st/write os (bytes (b/rand 4)))
+          (st/write os (b/rand 4))
           (st/flush os)
           (st/read-bytes is 4))))
      (fn [client]
@@ -24,7 +24,7 @@
         (proxy/edn->server-opts {:type :vmess :uuid uuid})
         client
         (fn [{is :input-stream os :output-stream}]
-          (let [b (bytes (st/read-bytes is 4))]
+          (let [b (st/read-bytes is 4)]
             (st/write os b)
             (st/flush os))))))))
 

@@ -23,7 +23,7 @@
   "CRC32 checksum."
   ^bytes [^bytes b]
   (let [c (CRC32.)]
-    (.update c b 0 (alength b))
+    (.update c b 0 (b/length b))
     (st/pack st/st-uint-be (.getValue c))))
 
 (defn fnv1a
@@ -108,7 +108,7 @@
   "Construct shake128 read fn."
   [^bytes b]
   (let [d (SHAKEDigest. 128)]
-    (.update d b 0 (alength b))
+    (.update d b 0 (b/length b))
     (fn [n]
       (let [b (byte-array n)]
         (.doOutput d b 0 n)
@@ -150,7 +150,6 @@
 (defn hmac-expand-key
   "Expand key in HMAC format."
   [^bytes key]
-  {:pre [(<= (alength key) 64)]}
   (let [ikey (byte-array 64)
         okey (byte-array 64)]
     (b/fill ikey 0x36)
@@ -259,7 +258,7 @@
   (let [{:keys [key iv verify padding sec use-mask? use-padding?]} params
         opt (+ 1 (if use-mask? 4 0) (if use-padding? 8 0))
         sec (case sec :aesgcm 3 :chacha20poly1305 4)
-        plen (alength (bytes padding))
+        plen (b/length padding)
         plen+sec (+ sec (bit-shift-left plen 4))]
     (st/pack st-req
              {:ver      1
@@ -285,7 +284,7 @@
         req+padding+fnv1a (b/cat req+padding (fnv1a req+padding))
         elen (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
-                   b (st/pack st/st-ushort-be (alength req+padding+fnv1a))]
+                   b (st/pack st/st-ushort-be (b/length req+padding+fnv1a))]
                (aesgcm-encrypt key iv b eaid))
         ereq (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
@@ -355,7 +354,7 @@
                 (aesgcm-encrypt key iv resp))
         elen (let [key (vkdf :resp-len-key 16 rkey)
                    iv (vkdf :resp-len-iv 12 riv)
-                   b (st/pack st/st-ushort-be (alength resp))]
+                   b (st/pack st/st-ushort-be (b/length resp))]
                (aesgcm-encrypt key iv b))]
     (b/cat elen eresp)))
 
@@ -442,13 +441,12 @@
                                mask (if-not use-mask? 0 (read-shake-fn))
                                iv (read-iv-fn)
                                edata (aead-encrypt sec key iv data)
-                               elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
+                               elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (b/length edata))))]
                            (st/write os (b/cat elen edata (b/rand plen)))
                            (st/flush os)))
         write-fn (fn [data]
-                   (let [data (bytes data)]
-                     (when-not (zero? (alength data))
-                       (write-frame-fn data))))
+                   (when-not (zero? (b/length data))
+                     (write-frame-fn data)))
         close-fn (fn []
                    (write-frame-fn (byte-array 0))
                    (st/close os))]

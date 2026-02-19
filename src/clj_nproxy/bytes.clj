@@ -6,23 +6,28 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
+(defn length
+  "Get bytes length."
+  ^long [^bytes b]
+  (alength (bytes b)))
+
 (defn cat
   "Concat bytes."
   ^bytes [& bs]
-  (let [nl (->> bs (reduce #(+ %1 (alength (bytes %2))) 0))
+  (let [nl (->> bs (reduce #(+ %1 (length %2)) 0))
         nb (byte-array nl)]
     (loop [i 0 bs bs]
       (if (empty? bs)
         nb
         (let [b (bytes (first bs))
-              l (alength b)]
+              l (length b)]
           (System/arraycopy b 0 nb i l)
           (recur (+ i l) (rest bs)))))))
 
 (defn copy
   "Copy bytes."
   ^bytes [^bytes b]
-  (Arrays/copyOf b (alength b)))
+  (Arrays/copyOf b (length b)))
 
 (defn copy-of
   "Copy start part of bytes."

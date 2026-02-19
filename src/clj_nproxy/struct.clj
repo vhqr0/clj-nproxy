@@ -246,10 +246,9 @@
   Struct
   (read-struct [_ is] (read-bytes is len))
   (write-struct [_ os data]
-    (let [data (bytes data)]
-      (if-not (= len (alength data))
-        (throw (data-error))
-        (.write ^OutputStream os data)))))
+    (if (= len (b/length data))
+      (write os data)
+      (throw (data-error)))))
 
 (defn ->st-bytes
   "Construct bytes struct."
@@ -262,10 +261,8 @@
     (let [len (read-struct st-len is)]
       (read-bytes is len)))
   (write-struct [_ os data]
-    (let [data (bytes data)
-          len (alength data)]
-      (write-struct st-len os len)
-      (.write ^OutputStream os data))))
+    (write-struct st-len os (b/length data))
+    (write os data)))
 
 (defn ->st-var-bytes
   "Construct var bytes struct."
@@ -275,7 +272,7 @@
 (defn read-delimited-bytes
   "Read delimited bytes from stream."
   ^bytes [^InputStream is ^bytes delim]
-  (let [len (alength delim)
+  (let [len (b/length delim)
         os (ByteArrayOutputStream.)]
     (loop [^bytes pb (read-bytes is len)]
       (if (zero? (b/compare pb delim))
@@ -433,7 +430,7 @@
     (proxy [InputStream] []
       (read
         ([] (read-byte-fn))
-        ([b] (fill-bytes-fn b 0 (alength (bytes b))))
+        ([b] (fill-bytes-fn b 0 (b/length b)))
         ([b off len] (fill-bytes-fn b off len)))
       (close []
         (when (some? close-fn)
@@ -449,11 +446,11 @@
   ^OutputStream [write-fn & [close-fn]]
   (proxy [OutputStream] []
     (write
-      ([b] (let [b (bytes (if (bytes? b) b (byte-array [b])))]
-             (when-not (zero? (alength b))
+      ([b] (let [b (if (bytes? b) b (byte-array [b]))]
+             (when-not (zero? (b/length b))
                (write-fn b))))
-      ([b off len] (let [b (bytes (b/copy-of-range b off (+ off len)))]
-                     (when-not (zero? (alength b))
+      ([b off len] (let [b (b/copy-of-range b off (+ off len))]
+                     (when-not (zero? (b/length b))
                        (write-fn b)))))
     (close []
       (when (some? close-fn)

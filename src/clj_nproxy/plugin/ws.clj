@@ -82,7 +82,7 @@
   "Write frame to stream."
   [os {:keys [op fin? mask data]}]
   (write-fin-op os fin? op)
-  (write-mask-len os (some? mask) (alength (bytes data)))
+  (write-mask-len os (some? mask) (b/length data))
   (when (some? mask)
     (st/write os mask))
   (let [data (cond-> data
@@ -99,10 +99,9 @@
                     (case (int op)
                       (0 9 10) (recur)
                       8 nil
-                      2 (let [data (bytes data)]
-                          (if-not (zero? (alength data))
-                            data
-                            (recur))))))]
+                      2 (if-not (zero? (b/length data))
+                          data
+                          (recur)))))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(st/close is)))))
 
@@ -113,9 +112,8 @@
                          (write-frame os {:op op :fin? true :mask (when mask? (b/rand 4)) :data data})
                          (st/flush os))
         write-fn (fn [b]
-                   (let [b (bytes b)]
-                     (when-not (zero? (alength b))
-                       (write-frame-fn 2 b))))
+                   (when-not (zero? (b/length b))
+                     (write-frame-fn 2 b)))
         close-fn (fn []
                    (write-frame-fn 8 (byte-array []))
                    (st/close os))]
