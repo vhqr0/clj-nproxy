@@ -7,7 +7,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy])
   (:import [java.util.zip CRC32]
-           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream ByteArrayInputStream]
+           [java.io BufferedInputStream BufferedOutputStream ByteArrayInputStream]
            [java.security MessageDigest]
            [javax.crypto Cipher]
            [javax.crypto.spec SecretKeySpec IvParameterSpec GCMParameterSpec]
@@ -410,7 +410,7 @@
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
-  ^InputStream [^InputStream is params key iv & [pre-fn]]
+  [is params key iv & [pre-fn]]
   (let [{:keys [sec use-mask? use-padding?]} params
         key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
@@ -426,11 +426,11 @@
                         _ (when-not (zero? plen) (st/read-bytes is plen))]
                     (aead-decrypt sec key iv edata)))]
     (BufferedInputStream.
-     (st/read-fn->input-stream read-fn #(.close is)))))
+     (st/read-fn->input-stream read-fn #(st/close is)))))
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
-  ^OutputStream [^OutputStream os params key iv & [pre-fn]]
+  [os params key iv & [pre-fn]]
   (let [{:keys [sec use-mask? use-padding?]} params
         key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
@@ -443,31 +443,31 @@
                                iv (read-iv-fn)
                                edata (aead-encrypt sec key iv data)
                                elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (alength edata))))]
-                           (.write os (b/cat elen edata (b/rand plen)))
-                           (.flush os)))
+                           (st/write os (b/cat elen edata (b/rand plen)))
+                           (st/flush os)))
         write-fn (fn [data]
                    (let [data (bytes data)]
                      (when-not (zero? (alength data))
                        (write-frame-fn data))))
         close-fn (fn []
                    (write-frame-fn (byte-array 0))
-                   (.close os))]
+                   (st/close os))]
     (BufferedOutputStream.
      (st/write-fn->output-stream write-fn close-fn))))
 
 (defmethod proxy/mk-client :vmess [{:keys [id] :as opts} server host port callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
+  (let [{is :input-stream os :output-stream} server
         {:keys [key iv rkey riv] :as params} (->params opts)
         pre-read-fn #(read-resp is params)
-        pre-write-fn #(.write os (->ereq id params host port))]
+        pre-write-fn #(st/write os (->ereq id params host port))]
     (callback
      {:input-stream (wrap-input-stream is params rkey riv pre-read-fn)
       :output-stream (wrap-output-stream os params key iv pre-write-fn)})))
 
 (defmethod proxy/mk-server :vmess [{:keys [id]} client callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+  (let [{is :input-stream os :output-stream} client
         [host port {:keys [key iv rkey riv] :as params} _eaid] (read-req is id)
-        pre-write-fn #(.write os (->eresp params))]
+        pre-write-fn #(st/write os (->eresp params))]
     (callback
      {:input-stream (wrap-input-stream is params key iv)
       :output-stream (wrap-output-stream os params rkey riv pre-write-fn)})))

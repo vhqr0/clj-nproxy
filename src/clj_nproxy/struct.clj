@@ -1,6 +1,6 @@
 (ns clj-nproxy.struct
   "Structure IO utils."
-  (:refer-clojure :exclude [keys])
+  (:refer-clojure :exclude [write flush keys])
   (:require [clj-nproxy.bytes :as b])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
            [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream PipedInputStream PipedOutputStream]
@@ -17,6 +17,26 @@
   "Construct data error."
   []
   (ex-info "data error" {:reason ::data-error}))
+
+(defn write
+  "Write bytes to stream."
+  [^OutputStream os ^bytes b]
+  (.write os b))
+
+(defn flush
+  "Flush stream."
+  [^OutputStream os]
+  (.flush os))
+
+(defn close
+  "Close object."
+  [^Closeable o]
+  (.close o))
+
+(defn safe-close
+  "Safe close object."
+  [^Closeable o]
+  (try (.close o) (catch Exception _)))
 
 (defprotocol Struct
   "Struct protocol: read/write structure data
@@ -139,6 +159,38 @@
   (unpack (keys :a st-ubyte :b st-ubyte) (byte-array [1 2])) ; => {:a 1 :b 2}
   )
 
+(defn read-var-coll
+  "Read var coll from stream."
+  [^InputStream is st-len st]
+  (let [len (read-struct st-len is)]
+    (loop [data [] n len]
+      (if (<= n 0)
+        data
+        (let [data (conj data (read-struct st is))]
+          (recur data (dec n)))))))
+
+(defn write-var-coll
+  "Write var coll to stream."
+  [^OutputStream os st-len st data]
+  (write-struct st-len os (count data))
+  (run! (partial write-struct st os) data))
+
+(defrecord VarCollStruct [st-len st]
+  Struct
+  (read-struct [_ is] (read-var-coll is st-len st))
+  (write-struct [_ os data] (write-var-coll os st-len st data)))
+
+(defn ->var-coll
+  "Construct var coll struct."
+  [st-len st]
+  (->VarCollStruct st-len st))
+
+^:rct/test
+(comment
+  (seq (pack (->var-coll st-ubyte st-ushort-be) [1 2])) ; => [2 0 1 0 2]
+  (unpack (->var-coll st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
+  )
+
 ;;; byte
 
 (defn read-ubyte
@@ -238,9 +290,7 @@
 (defrecord DelimitedBytesStruct [^bytes delim]
   Struct
   (read-struct [_ is] (read-delimited-bytes is delim))
-  (write-struct [_ os data]
-    (.write ^OutputStream os (bytes data))
-    (.write ^OutputStream os delim)))
+  (write-struct [_ os data] (write os data) (write os delim)))
 
 (defn ->st-delimited-bytes
   "Construct delimited bytes struct."
@@ -278,7 +328,7 @@
 (defrecord NumberStruct [^long len unpack-fn pack-fn]
   Struct
   (read-struct [_ is] (unpack-fn (read-bytes is len)))
-  (write-struct [_ os n] (.write ^OutputStream os (bytes (pack-fn n)))))
+  (write-struct [_ os n] (write os (pack-fn n))))
 
 (def st-short-be  (->NumberStruct 2 unpack-short-be pack-short-be))
 (def st-int-be    (->NumberStruct 4 unpack-int-be pack-int-be))
@@ -445,11 +495,6 @@
   ^Closeable [close-fn]
   (reify Closeable
     (close [_] (close-fn))))
-
-(defn safe-close
-  "Safe close object."
-  [^Closeable o]
-  (try (.close o) (catch Exception _)))
 
 (defn copy
   "Copy from input stream to output stream."

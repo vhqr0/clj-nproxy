@@ -4,8 +4,7 @@
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]
-            [clj-nproxy.plugin.socks5 :as socks5])
-  (:import [java.io InputStream OutputStream]))
+            [clj-nproxy.plugin.socks5 :as socks5]))
 
 (def st-req
   (st/keys
@@ -15,13 +14,13 @@
    :rsv st/st-http-line))
 
 (defmethod proxy/mk-client :trojan [{:keys [auth]} server host port callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server]
+  (let [{is :input-stream os :output-stream} server]
     (st/write-struct st-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
-    (.flush os)
+    (st/flush os)
     (callback {:input-stream is :output-stream os})))
 
 (defmethod proxy/mk-server :trojan [{:keys [auth]} client callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+  (let [{is :input-stream os :output-stream} client
         {:keys [cmd rsv] {:keys [host port]} :addr :as req} (st/read-struct st-req is)]
     (if-not (and (= auth (:auth req)) (= cmd 1) (= rsv ""))
       (throw (st/data-error))

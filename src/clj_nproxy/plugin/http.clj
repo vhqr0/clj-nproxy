@@ -1,8 +1,7 @@
 (ns clj-nproxy.plugin.http
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
-            [clj-nproxy.proxy :as proxy])
-  (:import [java.io InputStream OutputStream]))
+            [clj-nproxy.proxy :as proxy]))
 
 (defn unpack-http
   "Unpack text (before \r\n\r\n) to http."
@@ -114,11 +113,11 @@
   )
 
 (defmethod proxy/mk-client :http [{:keys [headers]} server host port callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
+  (let [{is :input-stream os :output-stream} server
         hostport (pack-hostport host port)
         headers (merge {"host" hostport} headers)]
     (st/write-struct st-http-req os {:method "CONNECT" :path hostport :headers headers})
-    (.flush os)
+    (st/flush os)
     (let [{:keys [status] :as resp} (st/read-struct st-http-resp is)]
       (if (= status "200")
         (callback {:http-resp resp :input-stream is :output-stream os})
@@ -127,12 +126,12 @@
 ;; limited: only accept connect method with explicit port
 
 (defmethod proxy/mk-server :http [{:keys [headers]} client callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+  (let [{is :input-stream os :output-stream} client
         {:keys [method path] :as req} (st/read-struct st-http-req is)]
     (if (= "connect" (str/lower-case method))
       (let [[host port] (unpack-hostport path)
             headers (merge {"connection" "close"} headers)]
         (st/write-struct st-http-resp os {:headers headers})
-        (.flush os)
+        (st/flush os)
         (callback {:http-req req :input-stream is :output-stream os :host host :port port}))
       (throw (st/data-error)))))

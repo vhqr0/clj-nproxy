@@ -5,7 +5,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net]
             [clj-nproxy.plugin.http :as http])
-  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]))
+  (:import [java.io BufferedInputStream BufferedOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -69,7 +69,7 @@
 
 (defn read-frame
   "Read frame from stream."
-  [^InputStream is]
+  [is]
   (let [[fin? op] (read-fin-op is)
         [mask? len] (read-mask-len is)
         mask (when mask? (st/read-bytes is 4))
@@ -80,20 +80,20 @@
 
 (defn write-frame
   "Write frame to stream."
-  [^OutputStream os {:keys [op fin? mask data]}]
+  [os {:keys [op fin? mask data]}]
   (write-fin-op os fin? op)
   (write-mask-len os (some? mask) (alength (bytes data)))
   (when (some? mask)
-    (.write os (bytes mask)))
-  (let [data (bytes (cond-> data
-                      (some? mask) (mask-data mask)))]
-    (.write os data)))
+    (st/write os mask))
+  (let [data (cond-> data
+               (some? mask) (mask-data mask))]
+    (st/write os data)))
 
 ;; ignore ping pong: it's stupid
 
 (defn wrap-input-stream
   "Wrap input stream."
-  ^InputStream [^InputStream is]
+  [is]
   (let [read-fn (fn []
                   (let [{:keys [op data]} (read-frame is)]
                     (case (int op)
@@ -104,21 +104,21 @@
                             data
                             (recur))))))]
     (BufferedInputStream.
-     (st/read-fn->input-stream read-fn #(.close is)))))
+     (st/read-fn->input-stream read-fn #(st/close is)))))
 
 (defn wrap-output-stream
   "Wrap output stream."
-  ^OutputStream [^OutputStream os mask?]
+  [os mask?]
   (let [write-frame-fn (fn [op data]
                          (write-frame os {:op op :fin? true :mask (when mask? (b/rand 4)) :data data})
-                         (.flush os))
+                         (st/flush os))
         write-fn (fn [b]
                    (let [b (bytes b)]
                      (when-not (zero? (alength b))
                        (write-frame-fn 2 b))))
         close-fn (fn []
                    (write-frame-fn 8 (byte-array []))
-                   (.close os))]
+                   (st/close os))]
     (BufferedOutputStream.
      (st/write-fn->output-stream write-fn close-fn))))
 
@@ -138,7 +138,7 @@
 (defn mk-client
   "Make websocket client."
   [opts server callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server
+  (let [{is :input-stream os :output-stream} server
         {:keys [path headers] :or {path "/"}} opts
         headers (merge {"upgrade" "websocket"
                         "connection" "upgrade"
@@ -146,7 +146,7 @@
                         "sec-websocket-version" "13"}
                        headers)]
     (st/write-struct http/st-http-req os {:path path :headers headers})
-    (.flush os)
+    (st/flush os)
     (let [{:keys [status] :as resp} (st/read-struct http/st-http-resp is)]
       (if (= status "101")
         (callback
@@ -158,7 +158,7 @@
 (defn mk-server
   "Make websocket server."
   [opts client callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+  (let [{is :input-stream os :output-stream} client
         {:keys [headers] :as req} (st/read-struct http/st-http-req is)
         {:strs [upgrade sec-websocket-key]} headers]
     (if (and (= "websocket" (str/lower-case upgrade))
@@ -170,7 +170,7 @@
                       "sec-websocket-accept" (key->accept sec-websocket-key)}
                      headers)]
         (st/write-struct http/st-http-resp os {:status "101" :reason "Switching Protocols" :headers headers})
-        (.flush os)
+        (st/flush os)
         (callback
          {:http-req req
           :input-stream (wrap-input-stream is)

@@ -3,8 +3,7 @@
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]
-            clj-nproxy.plugin.vmess)
-  (:import [java.io InputStream OutputStream]))
+            clj-nproxy.plugin.vmess))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -16,18 +15,18 @@
        (proxy/mk-client
         (proxy/edn->client-opts (merge {:type :vmess :uuid uuid} opts))
         server "example.com" 80
-        (fn [{^InputStream is :input-stream ^OutputStream os :output-stream}]
-          (.write os (bytes (b/rand 4)))
-          (.flush os)
+        (fn [{is :input-stream os :output-stream}]
+          (st/write os (bytes (b/rand 4)))
+          (st/flush os)
           (st/read-bytes is 4))))
      (fn [client]
        (proxy/mk-server
         (proxy/edn->server-opts {:type :vmess :uuid uuid})
         client
-        (fn [{^InputStream is :input-stream ^OutputStream os :output-stream}]
+        (fn [{is :input-stream os :output-stream}]
           (let [b (bytes (st/read-bytes is 4))]
-            (.write os b)
-            (.flush os))))))))
+            (st/write os b)
+            (st/flush os))))))))
 
 (deftest vmess-test
   (is (some? (sim-vmess {})))

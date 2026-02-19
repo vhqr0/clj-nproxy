@@ -58,32 +58,32 @@
    :addr st-addr))
 
 (defmethod proxy/mk-client :socks5 [_opts server host port callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} server]
+  (let [{is :input-stream os :output-stream} server]
     (st/write-struct st-auth-req os {:ver 5 :meths [0]})
-    (.flush os)
+    (st/flush os)
     (let [{:keys [ver meth]} (st/read-struct st-auth-resp is)]
       (if-not (and (= ver 5) (= meth 0))
         (throw (st/data-error))
         (do
           (st/write-struct st-req os {:ver 5 :cmd 1 :rsv 0 :addr {:atype 3 :host host :port port}})
-          (.flush os)
+          (st/flush os)
           (let [{:keys [ver status]} (st/read-struct st-resp is)]
             (if-not (and (= ver 5) (= status 0))
               (throw (st/data-error))
               (callback {:input-stream is :output-stream os}))))))))
 
 (defmethod proxy/mk-server :socks5 [_opts client callback]
-  (let [{^InputStream is :input-stream ^OutputStream os :output-stream} client
+  (let [{is :input-stream os :output-stream} client
         {:keys [ver meths]} (st/read-struct st-auth-req is)]
     (if-not (and (= ver 5) (contains? (set meths) 0))
       (throw (st/data-error))
       (do
         (st/write-struct st-auth-resp os {:ver 5 :meth 0})
-        (.flush os)
+        (st/flush os)
         (let [{:keys [ver cmd] {:keys [host port]} :addr} (st/read-struct st-req is)]
           (if-not (and (= ver 5) (= cmd 1))
             (throw (st/data-error))
             (do
               (st/write-struct st-resp os {:ver 5 :status 0 :rsv 0 :addr {:atype 1 :host "0.0.0.0" :port 0}})
-              (.flush os)
+              (st/flush os)
               (callback {:input-stream is :output-stream os :host host :port port}))))))))
