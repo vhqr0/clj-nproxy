@@ -114,6 +114,13 @@
         (.doOutput d b 0 n)
         b))))
 
+^:rct/test
+(comment
+  (def test-read-fn (shake128-read-fn (.getBytes "hello")))
+  (b/bytes->hex (test-read-fn 4)) ; => "8eb4b6a9"
+  (b/bytes->hex (test-read-fn 4)) ; => "32f28033"
+  )
+
 ;;; vmess
 
 ;;;; kdf
