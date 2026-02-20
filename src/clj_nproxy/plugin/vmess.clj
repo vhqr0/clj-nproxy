@@ -16,8 +16,6 @@
 
 ;;; crypto
 
-;;;; checksum
-
 (defn crc32
   "CRC32 checksum."
   ^bytes [^bytes b]
@@ -46,26 +44,8 @@
   (b/bytes->hex (fnv1a (.getBytes "hello"))) ; => "4f9f2cab"
   )
 
-;;;; cipher
-
 (defn aesecb-encrypt ^bytes [key b] (crypto/encrypt "AES/ECB/NoPadding" (crypto/aes-key key) nil b nil))
 (defn aesecb-decrypt ^bytes [key b] (crypto/decrypt "AES/ECB/NoPadding" (crypto/aes-key key) nil b nil))
-
-(defn aead-encrypt
-  "Aead encrypt based on sec."
-  ^bytes [sec key iv b & [aad]]
-  (case sec
-    :aesgcm           (crypto/aesgcm-encrypt key iv b aad)
-    :chacha20poly1305 (crypto/chacha20poly1305-encrypt key iv b aad)))
-
-(defn aead-decrypt
-  "Aead decrypt based on sec."
-  ^bytes [sec key iv b & [aad]]
-  (case sec
-    :aesgcm           (crypto/aesgcm-decrypt key iv b aad)
-    :chacha20poly1305 (crypto/chacha20poly1305-decrypt key iv b aad)))
-
-;;;; shake
 
 (defn shake128-read-fn
   "Construct shake128 read fn."
@@ -348,6 +328,20 @@
 
 ;;;; stream
 
+(defn sec-encrypt
+  "Encrypt based on sec."
+  ^bytes [sec key iv b & [aad]]
+  (case sec
+    :aesgcm           (crypto/aesgcm-encrypt key iv b aad)
+    :chacha20poly1305 (crypto/chacha20poly1305-encrypt key iv b aad)))
+
+(defn sec-decrypt
+  "Decrypt based on sec."
+  ^bytes [sec key iv b & [aad]]
+  (case sec
+    :aesgcm           (crypto/aesgcm-decrypt key iv b aad)
+    :chacha20poly1305 (crypto/chacha20poly1305-decrypt key iv b aad)))
+
 (defn chacha20poly1305-key
   "Convert base key to ChaCha20-Poly1305 key."
   ^bytes [^bytes key]
@@ -395,7 +389,7 @@
                         edata (st/read-bytes is (- len plen))]
                     (when-not (zero? plen)
                       (st/read-bytes is plen))
-                    (aead-decrypt sec key iv edata)))]
+                    (sec-decrypt sec key iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(st/close is)))))
 
@@ -412,7 +406,7 @@
                          (let [plen (if-not use-padding? 0 (bit-and 0x3f (read-shake-fn)))
                                mask (if-not use-mask? 0 (read-shake-fn))
                                iv (read-iv-fn)
-                               edata (aead-encrypt sec key iv data)
+                               edata (sec-encrypt sec key iv data)
                                len (+ plen (b/length edata))
                                elen (st/pack-ushort-be (bit-xor mask len))]
                            (st/write os (b/cat elen edata (b/rand plen)))
