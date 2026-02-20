@@ -3,6 +3,7 @@
   https://trojan-gfw.github.io/trojan/protocol"
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
+            [clj-nproxy.crypto :as crypto]
             [clj-nproxy.proxy :as proxy]
             [clj-nproxy.plugin.socks5 :as socks5]))
 
@@ -29,7 +30,7 @@
 (defn trojan-auth
   "Get trojan auth."
   ^String [^String password]
-  (-> password b/str->bytes b/sha224 b/bytes->hex))
+  (-> password b/str->bytes crypto/sha224 b/bytes->hex))
 
 ^:rct/test
 (comment

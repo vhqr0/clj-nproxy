@@ -5,12 +5,11 @@
   (:require [clojure.string :as str]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
+            [clj-nproxy.crypto :as crypto]
             [clj-nproxy.proxy :as proxy])
   (:import [java.util.zip CRC32]
            [java.io BufferedInputStream BufferedOutputStream ByteArrayInputStream]
            [java.security MessageDigest]
-           [javax.crypto Cipher]
-           [javax.crypto.spec SecretKeySpec IvParameterSpec GCMParameterSpec]
            [org.bouncycastle.crypto.digests SHAKEDigest]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -49,58 +48,22 @@
 
 ;;;; cipher
 
-(defn aesecb-crypt
-  "Encrypt or decrypt bytes with AESECB."
-  ^bytes [^bytes key ^bytes b mode]
-  (let [cipher (Cipher/getInstance "AES/ECB/NoPadding")
-        key (SecretKeySpec. key "AES")]
-    (.init cipher (int mode) key)
-    (.doFinal cipher b)))
-
-(defn aesecb-encrypt ^bytes [key b] (aesecb-crypt key b Cipher/ENCRYPT_MODE))
-(defn aesecb-decrypt ^bytes [key b] (aesecb-crypt key b Cipher/DECRYPT_MODE))
-
-(defn aesgcm-crypt
-  "Encryt or decrypt bytes with AESGCM."
-  ^bytes [^bytes key ^bytes iv ^bytes b ^bytes aad mode]
-  (let [cipher (Cipher/getInstance "AES/GCM/NoPadding")
-        key (SecretKeySpec. key "AES")
-        iv (GCMParameterSpec. 128 iv)]
-    (.init cipher (int mode) key iv)
-    (when (some? aad)
-      (.updateAAD cipher aad))
-    (.doFinal cipher b)))
-
-(defn aesgcm-encrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/ENCRYPT_MODE))
-(defn aesgcm-decrypt ^bytes [key iv b & [aad]] (aesgcm-crypt key iv b aad Cipher/DECRYPT_MODE))
-
-(defn chacha20poly1305-crypt
-  "Encryt or decrypt bytes with ChaCha20-Poly1305."
-  ^bytes [^bytes key ^bytes iv ^bytes b ^bytes aad mode]
-  (let [cipher (Cipher/getInstance "ChaCha20-Poly1305")
-        key (SecretKeySpec. key "AES")
-        iv (IvParameterSpec. iv)]
-    (.init cipher (int mode) key iv)
-    (when (some? aad)
-      (.updateAAD cipher aad))
-    (.doFinal cipher b)))
-
-(defn chacha20poly1305-encrypt ^bytes [key iv b & [aad]] (chacha20poly1305-crypt key iv b aad Cipher/ENCRYPT_MODE))
-(defn chacha20poly1305-decrypt ^bytes [key iv b & [aad]] (chacha20poly1305-crypt key iv b aad Cipher/DECRYPT_MODE))
+(defn aesecb-encrypt ^bytes [key b] (crypto/encrypt "AES/ECB/NoPadding" (crypto/aes-key key) nil b nil))
+(defn aesecb-decrypt ^bytes [key b] (crypto/decrypt "AES/ECB/NoPadding" (crypto/aes-key key) nil b nil))
 
 (defn aead-encrypt
   "Aead encrypt based on sec."
   ^bytes [sec key iv b & [aad]]
   (case sec
-    :aesgcm           (aesgcm-encrypt key iv b aad)
-    :chacha20poly1305 (chacha20poly1305-encrypt key iv b aad)))
+    :aesgcm           (crypto/aesgcm-encrypt key iv b aad)
+    :chacha20poly1305 (crypto/chacha20poly1305-encrypt key iv b aad)))
 
 (defn aead-decrypt
   "Aead decrypt based on sec."
   ^bytes [sec key iv b & [aad]]
   (case sec
-    :aesgcm           (aesgcm-decrypt key iv b aad)
-    :chacha20poly1305 (chacha20poly1305-decrypt key iv b aad)))
+    :aesgcm           (crypto/aesgcm-decrypt key iv b aad)
+    :chacha20poly1305 (crypto/chacha20poly1305-decrypt key iv b aad)))
 
 ;;;; shake
 
@@ -216,9 +179,9 @@
 (defn ->id
   "Construct expanded vmess id from uuid."
   [uuid]
-  (let [cmd-key (b/md5 (b/cat
-                        (b/hex->bytes (str/replace uuid "-" ""))
-                        (b/str->bytes vmess-uuid)))
+  (let [cmd-key (crypto/md5 (b/cat
+                             (b/hex->bytes (str/replace uuid "-" ""))
+                             (b/str->bytes vmess-uuid)))
         auth-key (vkdf :aid 16 cmd-key)]
     {:uuid uuid :cmd-key cmd-key :auth-key auth-key}))
 
@@ -228,8 +191,8 @@
   (let [nonce (b/rand 8)
         key (b/rand 16)
         iv (b/rand 16)
-        rkey (b/copy-of (b/sha256 key) 16)
-        riv (b/copy-of (b/sha256 iv) 16)
+        rkey (b/copy-of (crypto/sha256 key) 16)
+        riv (b/copy-of (crypto/sha256 iv) 16)
         verify (rand-int 256)
         padding (b/rand (rand-int 16))]
     {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
@@ -292,10 +255,10 @@
         elen (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
                    b (st/pack-ushort-be (b/length req+padding+fnv1a))]
-               (aesgcm-encrypt key iv b eaid))
+               (crypto/aesgcm-encrypt key iv b eaid))
         ereq (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
-               (aesgcm-encrypt key iv req+padding+fnv1a eaid))]
+               (crypto/aesgcm-encrypt key iv req+padding+fnv1a eaid))]
     (b/cat eaid elen nonce ereq)))
 
 (defn read-req
@@ -314,12 +277,12 @@
                 nonce (st/read-bytes is 8)
                 len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                           iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
-                          b (aesgcm-decrypt key iv elen eaid)]
+                          b (crypto/aesgcm-decrypt key iv elen eaid)]
                       (st/unpack-ushort-be b))
                 ereq (st/read-bytes is (+ 16 len))
                 req+padding+fnv1a (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                                         iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
-                                    (aesgcm-decrypt key iv ereq eaid))]
+                                    (crypto/aesgcm-decrypt key iv ereq eaid))]
             (if (zero? (b/compare
                         (b/copy-of-range req+padding+fnv1a (- len 4) len)
                         (fnv1a (b/copy-of req+padding+fnv1a (- len 4)))))
@@ -332,8 +295,8 @@
                         plen (bit-shift-right plen+sec 4)
                         padding (st/read-bytes bais plen)]
                     (if (zero? (.available bais))
-                      (let [rkey (b/copy-of (b/sha256 key) 16)
-                            riv (b/copy-of (b/sha256 iv) 16)
+                      (let [rkey (b/copy-of (crypto/sha256 key) 16)
+                            riv (b/copy-of (crypto/sha256 iv) 16)
                             params {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
                                     :sec sec :use-mask? use-mask? :use-padding? use-padding?}]
                         [host port params eaid])
@@ -359,11 +322,11 @@
         resp (st/pack st-resp {:verify verify :opt 0 :cmd 0 :data (byte-array 0)})
         eresp (let [key (vkdf :resp-key 16 rkey)
                     iv (vkdf :resp-iv 12 riv)]
-                (aesgcm-encrypt key iv resp))
+                (crypto/aesgcm-encrypt key iv resp))
         elen (let [key (vkdf :resp-len-key 16 rkey)
                    iv (vkdf :resp-len-iv 12 riv)
                    b (st/pack-ushort-be (b/length resp))]
-               (aesgcm-encrypt key iv b))]
+               (crypto/aesgcm-encrypt key iv b))]
     (b/cat elen eresp)))
 
 (defn read-resp
@@ -373,12 +336,12 @@
         elen (st/read-bytes is 18)
         len (let [key (vkdf :resp-len-key 16 rkey)
                   iv (vkdf :resp-len-iv 12 riv)
-                  b (aesgcm-decrypt key iv elen)]
+                  b (crypto/aesgcm-decrypt key iv elen)]
               (st/unpack-ushort-be b))
         eresp (st/read-bytes is (+ 16 len))
         resp (let [key (vkdf :resp-key 16 rkey)
                    iv (vkdf :resp-iv 12 riv)
-                   b (aesgcm-decrypt key iv eresp)]
+                   b (crypto/aesgcm-decrypt key iv eresp)]
                (st/unpack st-resp b))]
     (when-not (= verify (:verify resp))
       (throw (st/data-error)))))
@@ -388,8 +351,8 @@
 (defn chacha20poly1305-key
   "Convert base key to ChaCha20-Poly1305 key."
   ^bytes [^bytes key]
-  (let [key (b/md5 key)]
-    (b/cat key (b/md5 key))))
+  (let [key (crypto/md5 key)]
+    (b/cat key (crypto/md5 key))))
 
 (defn sec-key
   "Convert base key to key based on sec."

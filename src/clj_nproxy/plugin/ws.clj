@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
+            [clj-nproxy.crypto :as crypto]
             [clj-nproxy.net :as net]
             [clj-nproxy.plugin.http :as http])
   (:import [java.io BufferedInputStream BufferedOutputStream]))
@@ -126,7 +127,7 @@
 (defn key->accept
   "Get accept from key."
   ^String [^String key]
-  (-> (str key ws-uuid) b/str->bytes b/sha1 b/bytes->base64))
+  (-> (str key ws-uuid) b/str->bytes crypto/sha1 b/bytes->base64))
 
 ^:rct/test
 (comment
