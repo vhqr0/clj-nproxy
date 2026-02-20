@@ -10,9 +10,10 @@
 ;;; digest
 
 (defn digest
-  ^bytes [^String algo ^bytes b]
-  (let [d (MessageDigest/getInstance algo)]
-    (.digest d b)))
+  ^bytes [^String algo & bs]
+  (let [md (MessageDigest/getInstance algo)]
+    (run! #(.update md (bytes %)) bs)
+    (.digest md)))
 
 (def md5 (partial digest "MD5"))
 (def sha1 (partial digest "SHA-1"))
@@ -30,10 +31,11 @@
 ;;; hmac
 
 (defn hmac
-  ^bytes [algo ^bytes key ^bytes data]
+  ^bytes [algo ^bytes key & bs]
   (let [mac (doto (Mac/getInstance algo)
               (.init (SecretKeySpec. key algo)))]
-    (.doFinal mac data)))
+    (run! #(.update mac (bytes %)) bs)
+    (.doFinal mac)))
 
 (def hmac-sha256 (partial hmac "HMACSHA256"))
 (def hmac-sha384 (partial hmac "HMACSHA384"))
