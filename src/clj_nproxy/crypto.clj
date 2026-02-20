@@ -1,8 +1,8 @@
 (ns clj-nproxy.crypto
   (:require [clj-nproxy.bytes :as b])
-  (:import [java.security MessageDigest Signature]
-           [java.security.spec AlgorithmParameterSpec]
-           [javax.crypto Mac KDF Cipher]
+  (:import [java.security MessageDigest PublicKey PrivateKey KeyPair KeyPairGenerator]
+           [java.security.spec AlgorithmParameterSpec ECGenParameterSpec]
+           [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -118,3 +118,59 @@
 (defn aesgcm-decrypt [key iv data & [aad]] (decrypt "AES/GCM/NoPadding" (aes-key key) (gcm-params iv) data aad))
 (defn chacha20poly1305-encrypt [key iv data & [aad]] (encrypt "ChaCha20-Poly1305" (chacha20-key key) (iv-params iv) data aad))
 (defn chacha20poly1305-decrypt [key iv data & [aad]] (decrypt "ChaCha20-Poly1305" (chacha20-key key) (iv-params iv) data aad))
+
+;;; asymmetric
+
+(defn kp-gen
+  ([algo]
+   (kp-gen algo nil))
+  ([algo ^AlgorithmParameterSpec params]
+   (let [kpg (KeyPairGenerator/getInstance algo)]
+     (when (some? params)
+       (.initialize kpg params))
+     (let [kp (.generateKeyPair kpg)]
+       [(.getPrivate kp) (.getPublic kp)]))))
+
+(defn agreement
+  ^bytes [algo ^PrivateKey pri ^PublicKey pub]
+  (let [ka (doto (KeyAgreement/getInstance algo)
+             (.init pri)
+             (.doPhase pub true))]
+    (.generateSecret ka)))
+
+(defn sim-agreement
+  "Simulate key agreement."
+  [gen-fn agreement-fn]
+  (let [[pri1 pub1] (gen-fn)
+        [pri2 pub2] (gen-fn)]
+    (zero? (b/compare
+            (agreement-fn pri1 pub2)
+            (agreement-fn pri2 pub1)))))
+
+;;;; ecc
+
+(defn ec-gen-params
+  ^AlgorithmParameterSpec [^String name]
+  (ECGenParameterSpec. name))
+
+(defn secp256r1-gen [] (kp-gen "EC" (ec-gen-params "secp256r1")))
+(defn secp384r1-gen [] (kp-gen "EC" (ec-gen-params "secp384r1")))
+(defn secp521r1-gen [] (kp-gen "EC" (ec-gen-params "secp521r1")))
+(def ec-agreement (partial agreement "ECDH"))
+(def secp256r1-agreement ec-agreement)
+(def secp384r1-agreement ec-agreement)
+(def secp521r1-agreement ec-agreement)
+
+(def x25519-gen (partial kp-gen "X25519"))
+(def x448-gen (partial kp-gen "X448"))
+(def x25519-agreement (partial agreement "X25519"))
+(def x448-agreement (partial agreement "X448"))
+
+^:rct/test
+(comment
+  (sim-agreement secp256r1-gen secp256r1-agreement) ; => true
+  (sim-agreement secp384r1-gen secp384r1-agreement) ; => true
+  (sim-agreement secp521r1-gen secp521r1-agreement) ; => true
+  (sim-agreement x25519-gen x25519-agreement) ; => true
+  (sim-agreement x448-gen x448-agreement) ; => true
+  )
