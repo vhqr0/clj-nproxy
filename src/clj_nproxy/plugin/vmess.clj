@@ -291,7 +291,7 @@
         req+padding+fnv1a (b/cat req+padding (fnv1a req+padding))
         elen (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
-                   b (st/pack st/st-ushort-be (b/length req+padding+fnv1a))]
+                   b (st/pack-ushort-be (b/length req+padding+fnv1a))]
                (aesgcm-encrypt key iv b eaid))
         ereq (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
@@ -313,8 +313,9 @@
           (let [elen (st/read-bytes is 18)
                 nonce (st/read-bytes is 8)
                 len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
-                          iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])]
-                      (st/unpack st/st-ushort-be (aesgcm-decrypt key iv elen eaid)))
+                          iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
+                          b (aesgcm-decrypt key iv elen eaid)]
+                      (st/unpack-ushort-be b))
                 ereq (st/read-bytes is (+ 16 len))
                 req+padding+fnv1a (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                                         iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
@@ -361,7 +362,7 @@
                 (aesgcm-encrypt key iv resp))
         elen (let [key (vkdf :resp-len-key 16 rkey)
                    iv (vkdf :resp-len-iv 12 riv)
-                   b (st/pack st/st-ushort-be (b/length resp))]
+                   b (st/pack-ushort-be (b/length resp))]
                (aesgcm-encrypt key iv b))]
     (b/cat elen eresp)))
 
@@ -370,15 +371,15 @@
   [is params]
   (let [{:keys [verify rkey riv]} params
         elen (st/read-bytes is 18)
-        len (st/unpack st/st-ushort-be
-                       (let [key (vkdf :resp-len-key 16 rkey)
-                             iv (vkdf :resp-len-iv 12 riv)]
-                         (aesgcm-decrypt key iv elen)))
+        len (let [key (vkdf :resp-len-key 16 rkey)
+                  iv (vkdf :resp-len-iv 12 riv)
+                  b (aesgcm-decrypt key iv elen)]
+              (st/unpack-ushort-be b))
         eresp (st/read-bytes is (+ 16 len))
-        resp (st/unpack st-resp
-                        (let [key (vkdf :resp-key 16 rkey)
-                              iv (vkdf :resp-iv 12 riv)]
-                          (aesgcm-decrypt key iv eresp)))]
+        resp (let [key (vkdf :resp-key 16 rkey)
+                   iv (vkdf :resp-iv 12 riv)
+                   b (aesgcm-decrypt key iv eresp)]
+               (st/unpack st-resp b))]
     (when-not (= verify (:verify resp))
       (throw (st/data-error)))))
 
@@ -402,7 +403,7 @@
   [iv]
   (let [read-fn (shake128-read-fn iv)]
     (fn []
-      (st/unpack st/st-ushort-be (read-fn 2)))))
+      (st/unpack-ushort-be (read-fn 2)))))
 
 (defn iv->read-iv-fn
   "Convert base iv to read iv fn."
@@ -412,7 +413,7 @@
     (fn []
       (let [i @vctr]
         (vswap! vctr inc)
-        (b/cat (st/pack st/st-ushort-be i) iv)))))
+        (b/cat (st/pack-ushort-be i) iv)))))
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
@@ -428,8 +429,9 @@
                         mask (if-not use-mask? 0 (read-shake-fn))
                         iv (read-iv-fn)
                         len (bit-xor mask (st/read-struct st/st-ushort-be is))
-                        edata (st/read-bytes is (- len plen))
-                        _ (when-not (zero? plen) (st/read-bytes is plen))]
+                        edata (st/read-bytes is (- len plen))]
+                    (when-not (zero? plen)
+                      (st/read-bytes is plen))
                     (aead-decrypt sec key iv edata)))]
     (BufferedInputStream.
      (st/read-fn->input-stream read-fn #(st/close is)))))
@@ -448,7 +450,8 @@
                                mask (if-not use-mask? 0 (read-shake-fn))
                                iv (read-iv-fn)
                                edata (aead-encrypt sec key iv data)
-                               elen (st/pack st/st-ushort-be (bit-xor mask (+ plen (b/length edata))))]
+                               len (+ plen (b/length edata))
+                               elen (st/pack-ushort-be (bit-xor mask len))]
                            (st/write os (b/cat elen edata (b/rand plen)))
                            (st/flush os)))
         write-fn (fn [data]
