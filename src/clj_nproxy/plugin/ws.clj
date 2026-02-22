@@ -15,14 +15,9 @@
   [^bytes data ^bytes mask]
   (let [data (bytes data)
         mask (bytes mask)]
-    (dotimes [i (alength data)]
-      (aset data i (unchecked-byte (bit-xor (aget data i) (aget mask (bit-and 3 i))))))))
-
-(defn mask-data
-  "Mask data."
-  ^bytes [^bytes data ^bytes mask]
-  (doto (b/copy data)
-    (mask-data-inplace mask)))
+    (dotimes [idx (alength data)]
+      (let [i (aget mask (bit-and 3 idx))]
+        (aset data idx (unchecked-byte (bit-xor i (aget data idx))))))))
 
 (defn read-fin-op
   "Read op from stream."
@@ -85,10 +80,9 @@
   (write-fin-op os fin? op)
   (write-mask-len os (some? mask) (b/length data))
   (when (some? mask)
-    (st/write os mask))
-  (let [data (cond-> data
-               (some? mask) (mask-data mask))]
-    (st/write os data)))
+    (st/write os mask)
+    (mask-data-inplace data mask))
+  (st/write os data))
 
 ;; ignore ping pong: it's stupid
 
