@@ -1,6 +1,6 @@
 (ns clj-nproxy.crypto
   (:require [clj-nproxy.bytes :as b])
-  (:import [java.security MessageDigest PublicKey PrivateKey KeyPair KeyPairGenerator]
+  (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator]
            [java.security.spec AlgorithmParameterSpec ECGenParameterSpec]
            [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
@@ -133,12 +133,33 @@
      (let [kp (.generateKeyPair kpg)]
        [(.getPrivate kp) (.getPublic kp)]))))
 
+(defn sign
+  ^bytes [algo ^PrivateKey pri ^bytes data]
+  (let [signer (doto (Signature/getInstance algo)
+                 (.initSign pri)
+                 (.update data))]
+    (.sign signer)))
+
+(defn verify
+  [algo ^PublicKey pub ^bytes data ^bytes sign]
+  (let [verifier (doto (Signature/getInstance algo)
+                   (.initVerify pub)
+                   (.update data))]
+    (.verify verifier sign)))
+
 (defn agreement
   ^bytes [algo ^PrivateKey pri ^PublicKey pub]
   (let [ka (doto (KeyAgreement/getInstance algo)
              (.init pri)
              (.doPhase pub true))]
     (.generateSecret ka)))
+
+(defn sim-sign-verify
+  "Simulate sign and verify."
+  [gen-fn sign-fn verify-fn data]
+  (let [[pri pub] (gen-fn)
+        sig (sign-fn pri data)]
+    (verify-fn pub data sig)))
 
 (defn sim-agreement
   "Simulate key agreement."
@@ -162,11 +183,24 @@
 (def secp256r1-agreement ec-agreement)
 (def secp384r1-agreement ec-agreement)
 (def secp521r1-agreement ec-agreement)
+(def secp256r1-sha256-sign (partial sign "SHA256withECDSA"))
+(def secp384r1-sha384-sign (partial sign "SHA384withECDSA"))
+(def secp521r1-sha512-sign (partial sign "SHA512withECDSA"))
+(def secp256r1-sha256-verify (partial verify "SHA256withECDSA"))
+(def secp384r1-sha384-verify (partial verify "SHA384withECDSA"))
+(def secp521r1-sha512-verify (partial verify "SHA512withECDSA"))
 
 (def x25519-gen (partial kp-gen "X25519"))
 (def x448-gen (partial kp-gen "X448"))
 (def x25519-agreement (partial agreement "X25519"))
 (def x448-agreement (partial agreement "X448"))
+
+(def ed25519-gen (partial kp-gen "Ed25519"))
+(def ed448-gen (partial kp-gen "Ed448"))
+(def ed25519-sign (partial sign "Ed25519"))
+(def ed448-sign (partial sign "Ed448"))
+(def ed25519-verify (partial verify "Ed25519"))
+(def ed448-verify (partial verify "Ed448"))
 
 ^:rct/test
 (comment
@@ -175,4 +209,9 @@
   (sim-agreement secp521r1-gen secp521r1-agreement) ; => true
   (sim-agreement x25519-gen x25519-agreement) ; => true
   (sim-agreement x448-gen x448-agreement) ; => true
+  (sim-sign-verify secp256r1-gen secp256r1-sha256-sign secp256r1-sha256-verify (b/rand 16)) ; => true
+  (sim-sign-verify secp384r1-gen secp384r1-sha384-sign secp384r1-sha384-verify (b/rand 16)) ; => true
+  (sim-sign-verify secp521r1-gen secp521r1-sha512-sign secp521r1-sha512-verify (b/rand 16)) ; => true
+  (sim-sign-verify ed25519-gen ed25519-sign ed25519-verify (b/rand 16)) ; => true
+  (sim-sign-verify ed448-gen ed448-sign ed448-verify (b/rand 16)) ; => true
   )
