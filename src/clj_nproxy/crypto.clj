@@ -141,11 +141,11 @@
     (.sign signer)))
 
 (defn verify
-  [algo ^PublicKey pub ^bytes data ^bytes sign]
+  [algo ^PublicKey pub ^bytes data ^bytes sig]
   (let [verifier (doto (Signature/getInstance algo)
                    (.initVerify pub)
                    (.update data))]
-    (.verify verifier sign)))
+    (.verify verifier sig)))
 
 (defn agreement
   ^bytes [algo ^PrivateKey pri ^PublicKey pub]
