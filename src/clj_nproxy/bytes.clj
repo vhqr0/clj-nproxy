@@ -77,7 +77,7 @@
 (defn left-align
   "Left align bytes."
   ^bytes [^bytes b ^long n]
-  (Arrays/copyOf (bytes b) (int n)))
+  (Arrays/copyOf b n))
 
 (defn right-align
   "Left align bytes."
