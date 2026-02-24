@@ -80,7 +80,7 @@
   (Arrays/copyOf b n))
 
 (defn right-align
-  "Left align bytes."
+  "Right align bytes."
   ^bytes [^bytes b ^long n]
   (let [l (alength b)
         nb (byte-array n)]
