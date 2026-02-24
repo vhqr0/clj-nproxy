@@ -12,19 +12,19 @@
   (alength b))
 
 (defn copy
-  "Copy part of bytes to another bytes."
+  "Copy part of bytes to another bytes inplace."
   [^bytes s ^Long s-from ^bytes d ^Long d-from ^Long n]
   (System/arraycopy s s-from d d-from n))
 
 (defn copy-of
-  "Copy start part of bytes."
+  "Return copy of start part of bytes."
   (^bytes [^bytes b]
    (copy-of b (alength b)))
   (^bytes [^bytes b ^long n]
    (Arrays/copyOf b n)))
 
 (defn copy-of-range
-  "Copy part of bytes."
+  "Return copy of part of bytes."
   ^bytes [^bytes b ^long from ^long to]
   (Arrays/copyOfRange b from to))
 
@@ -36,14 +36,14 @@
    (Arrays/compare b1 b1-from b1-to b2 b2-from b2-to)))
 
 (defn fill
-  "Fill bytes."
+  "Fill bytes inplace."
   ([^bytes b ^long i]
    (Arrays/fill b (unchecked-byte i)))
   ([^bytes b ^long from ^long start ^long i]
    (Arrays/fill b from start (unchecked-byte i))))
 
 (defn cat
-  "Concat bytes."
+  "Concat bytes, return new bytes."
   ^bytes [& bs]
   (let [nb (byte-array (->> bs (map length) (reduce +)))]
     (loop [i 0 bs bs]
@@ -60,7 +60,8 @@
   )
 
 (defn reverse
-  "Reverse bytes."
+  "Reverse bytes, return new bytes.
+  Useful to convert between fixed length uint-be and uint-le."
   ^bytes [^bytes b]
   (let [b (bytes b)
         l (alength b)
@@ -75,12 +76,14 @@
   )
 
 (defn left-align
-  "Left align bytes."
+  "Left align bytes, return new bytes.
+  Useful to format variable length uint-le."
   ^bytes [^bytes b ^long n]
   (Arrays/copyOf b n))
 
 (defn right-align
-  "Right align bytes."
+  "Right align bytes, return new bytes.
+  Useful to format variable length uint-be."
   ^bytes [^bytes b ^long n]
   (let [l (alength b)
         nb (byte-array n)]
