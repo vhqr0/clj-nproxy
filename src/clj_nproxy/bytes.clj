@@ -74,12 +74,12 @@
   (seq (reverse (byte-array [1 2 3]))) ; => [3 2 1]
   )
 
-(defn right-align
-  "Right align bytes."
+(defn left-align
+  "Left align bytes."
   ^bytes [^bytes b ^long n]
   (Arrays/copyOf (bytes b) (int n)))
 
-(defn left-align
+(defn right-align
   "Left align bytes."
   ^bytes [^bytes b ^long n]
   (let [l (alength b)
@@ -89,12 +89,12 @@
 
 ^:rct/test
 (comment
-  (seq (right-align (byte-array [1 2 3]) 2)) ; => [1 2]
-  (seq (right-align (byte-array [1 2 3]) 3)) ; => [1 2 3]
-  (seq (right-align (byte-array [1 2 3]) 4)) ; => [1 2 3 0]
-  (seq (left-align (byte-array [1 2 3]) 2)) ; => [2 3]
+  (seq (left-align (byte-array [1 2 3]) 2)) ; => [1 2]
   (seq (left-align (byte-array [1 2 3]) 3)) ; => [1 2 3]
-  (seq (left-align (byte-array [1 2 3]) 4)) ; => [0 1 2 3]
+  (seq (left-align (byte-array [1 2 3]) 4)) ; => [1 2 3 0]
+  (seq (right-align (byte-array [1 2 3]) 2)) ; => [2 3]
+  (seq (right-align (byte-array [1 2 3]) 3)) ; => [1 2 3]
+  (seq (right-align (byte-array [1 2 3]) 4)) ; => [0 1 2 3]
   )
 
 (defn mask-byte-inplace
