@@ -182,7 +182,8 @@ baidu.com 及其所有子域名的 tag 为 direct，当收到这些代理请求�
 #+begin_src clojure
   {:plugins [clj-nproxy.plugin.ws clj-nproxy.plugin.vmess]
    :inbound {:type :proxy
-             :net-opts {:type :tcp :port 1080}}
+             :net-opts {:type :tcp :port 1080}
+             :proxy-opts {:type :socks5}}
    :outbound {:type :tag-dispatch
               :tags {"baidu.com" :direct "google.com" :proxy "ads.com" :block}
               :default-tag :direct
@@ -206,7 +207,8 @@ tags 和 proxy 拆分到 tags.edn 和 sub.edn：
 #+begin_src clojure
   {:plugins [clj-nproxy.plugin.ws clj-nproxy.plugin.vmess]
    :inbound {:type :proxy
-             :net-opts {:type :tcp :port 1080}}
+             :net-opts {:type :tcp :port 1080}
+             :proxy-opts {:type :socks5}}
    :outbound {:type :tag-dispatch
               :tags #file "tags.edn"
               :default-tag :direct
