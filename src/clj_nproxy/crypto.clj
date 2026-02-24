@@ -1,4 +1,5 @@
 (ns clj-nproxy.crypto
+  "Java crypto wrapper."
   (:require [clj-nproxy.bytes :as b])
   (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator]
            [java.security.spec AlgorithmParameterSpec ECGenParameterSpec]
@@ -10,6 +11,7 @@
 ;;; digest
 
 (defn digest
+  "Digest."
   ^bytes [^String algo & bs]
   (let [md (MessageDigest/getInstance algo)]
     (run! #(.update md (bytes %)) bs)
@@ -31,7 +33,8 @@
 ;;; hmac
 
 (defn hmac
-  ^bytes [algo ^bytes key & bs]
+  "Hmac."
+  ^bytes [^String algo ^bytes key & bs]
   (let [mac (doto (Mac/getInstance algo)
               (.init (SecretKeySpec. key algo)))]
     (run! #(.update mac (bytes %)) bs)
@@ -49,7 +52,8 @@
 ;;; hkdf
 
 (defn hkdf-extract
-  ^bytes [algo ^bytes ikm ^bytes salt]
+  "Hkdf extract."
+  ^bytes [^String algo ^bytes ikm ^bytes salt]
   (let [kdf (KDF/getInstance algo)
         params (-> (HKDFParameterSpec/ofExtract)
                    (.addIKM ikm)
@@ -58,13 +62,15 @@
     (.deriveData kdf params)))
 
 (defn hkdf-expand
-  ^bytes [algo ^bytes prk ^bytes info length]
+  "Hkdf expand."
+  ^bytes [^String algo ^bytes prk ^bytes info ^long length]
   (let [kdf (KDF/getInstance algo)
         params (HKDFParameterSpec/expandOnly (SecretKeySpec. prk algo) (bytes info) (int length))]
     (.deriveData kdf params)))
 
 (defn hkdf
-  ^bytes [algo ^bytes ikm ^bytes salt ^bytes info length]
+  "Hkdf."
+  ^bytes [^String algo ^bytes ikm ^bytes salt ^bytes info ^Long length]
   (let [kdf (KDF/getInstance algo)
         params (-> (HKDFParameterSpec/ofExtract)
                    (.addIKM ikm)
@@ -88,7 +94,8 @@
 ;;; crypt
 
 (defn crypt
-  ^bytes [mode algo ^SecretKeySpec key ^AlgorithmParameterSpec params ^bytes data ^bytes aad]
+  "Encrypt/Decrypt."
+  ^bytes [^Long mode ^String algo ^SecretKeySpec key ^AlgorithmParameterSpec params ^bytes data ^bytes aad]
   (let [cipher (doto (Cipher/getInstance algo)
                  (.init (int mode) key params))]
     (when (some? aad)
@@ -99,18 +106,22 @@
 (def decrypt (partial crypt Cipher/DECRYPT_MODE))
 
 (defn aes-key
+  "Make aes key."
   ^SecretKeySpec [^bytes key]
   (SecretKeySpec. key "AES"))
 
 (defn chacha20-key
+  "Make chacha20 key."
   ^SecretKeySpec [^bytes key]
   (SecretKeySpec. key "ChaCha20"))
 
 (defn iv-params
+  "Make iv params."
   ^AlgorithmParameterSpec [^bytes iv]
   (IvParameterSpec. iv))
 
 (defn gcm-params
+  "Make gcm params."
   (^AlgorithmParameterSpec [^bytes iv]
    (gcm-params 128 iv))
   (^AlgorithmParameterSpec [^long tlen ^bytes iv]
@@ -124,9 +135,10 @@
 ;;; asymmetric
 
 (defn kp-gen
-  ([algo]
+  "Keypair generation."
+  ([^String algo]
    (kp-gen algo nil))
-  ([algo ^AlgorithmParameterSpec params]
+  ([^String algo ^AlgorithmParameterSpec params]
    (let [kpg (KeyPairGenerator/getInstance algo)]
      (when (some? params)
        (.initialize kpg params))
@@ -134,21 +146,24 @@
        [(.getPrivate kp) (.getPublic kp)]))))
 
 (defn sign
-  ^bytes [algo ^PrivateKey pri ^bytes data]
+  "Sign signature."
+  ^bytes [^String algo ^PrivateKey pri ^bytes data]
   (let [signer (doto (Signature/getInstance algo)
                  (.initSign pri)
                  (.update data))]
     (.sign signer)))
 
 (defn verify
-  [algo ^PublicKey pub ^bytes data ^bytes sig]
+  "Verify signature."
+  ^Boolean [^String algo ^PublicKey pub ^bytes data ^bytes sig]
   (let [verifier (doto (Signature/getInstance algo)
                    (.initVerify pub)
                    (.update data))]
     (.verify verifier sig)))
 
 (defn agreement
-  ^bytes [algo ^PrivateKey pri ^PublicKey pub]
+  "Key agreement."
+  ^bytes [^String algo ^PrivateKey pri ^PublicKey pub]
   (let [ka (doto (KeyAgreement/getInstance algo)
              (.init pri)
              (.doPhase pub true))]
@@ -173,6 +188,7 @@
 ;;;; ecc
 
 (defn ec-gen-params
+  "Make ec generation params."
   ^AlgorithmParameterSpec [^String name]
   (ECGenParameterSpec. name))
 
