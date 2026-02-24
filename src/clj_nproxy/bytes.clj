@@ -100,40 +100,6 @@
   (seq (right-align (byte-array [1 2 3]) 4)) ; => [0 1 2 3]
   )
 
-(defn mask-byte-inplace
-  "Mask bytes with single byte inplace."
-  ([^bytes b ^long i]
-   (mask-byte-inplace b 0 (alength b) i))
-  ([^bytes b ^long from ^long to ^long i]
-   (let [b (bytes b)
-         from (int from)
-         to (int to)
-         i (int i)]
-     (loop [idx from]
-       (when (< idx to)
-         (aset b idx (unchecked-byte (bit-xor i (aget b idx)))))))))
-
-(defn mask-bytes-inplace
-  "Mask bytes inplace."
-  ([^bytes b ^bytes m]
-   (mask-bytes-inplace b 0 m 0 (alength b)))
-  ([^bytes b ^Long b-from ^bytes m ^Long m-from ^Long n]
-   (let [b (bytes b)
-         b-from (int b-from)
-         m (bytes m)
-         m-from (int m-from)]
-     (dotimes [idx n]
-       (let [b-idx (+ b-from idx)
-             m-idx (+ m-from idx)
-             i (aget m m-idx)]
-         (aset b b-idx (unchecked-byte (bit-xor i (aget b b-idx)))))))))
-
-^:rct/test
-(comment
-  (seq (doto (byte-array [1 2 3]) (mask-byte-inplace 1))) ; => [0 2 3]
-  (seq (doto (byte-array [1 2 3]) (mask-bytes-inplace (byte-array [2 2 2])))) ; => [3 0 1]
-  )
-
 (def ^:dynamic ^Random *random* (SecureRandom.))
 
 (defn rand
