@@ -65,7 +65,7 @@
   "Hkdf expand."
   ^bytes [^String algo ^bytes prk ^bytes info ^long length]
   (let [kdf (KDF/getInstance algo)
-        params (HKDFParameterSpec/expandOnly (SecretKeySpec. prk algo) (bytes info) (int length))]
+        params (HKDFParameterSpec/expandOnly (SecretKeySpec. prk algo) info length)]
     (.deriveData kdf params)))
 
 (defn hkdf
@@ -97,7 +97,7 @@
   "Encrypt/Decrypt."
   ^bytes [^Long mode ^String algo ^SecretKeySpec key ^AlgorithmParameterSpec params ^bytes data ^bytes aad]
   (let [cipher (doto (Cipher/getInstance algo)
-                 (.init (int mode) key params))]
+                 (.init mode key params))]
     (when (some? aad)
       (.updateAAD cipher aad))
     (.doFinal cipher data)))
