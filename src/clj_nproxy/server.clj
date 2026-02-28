@@ -30,6 +30,21 @@
 (defmethod mk-outbound :direct [_opts host port callback]
   (net/mk-client {:type :tcp :host host :port port} callback))
 
+(defmethod mk-inbound :redirect [{:keys [net-opts host port]} callback]
+  (net/mk-server
+   net-opts
+   (fn [net-client]
+     (callback (merge net-client {:host host :port port})))))
+
+(defmethod mk-outbound :redirect [{:keys [net-opts]} _host _port callback]
+  (net/mk-client net-opts callback))
+
+(defmethod edn->inbound-opts :redirect [opts]
+  (update opts :net-opts net/edn->server-opts))
+
+(defmethod edn->outbound-opts :redirect [opts]
+  (update opts :net-opts net/edn->client-opts))
+
 (defmethod mk-inbound :proxy [{:keys [name net-opts proxy-opts]} callback]
   (net/mk-server
    net-opts
