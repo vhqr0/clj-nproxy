@@ -23,7 +23,8 @@
 (defmethod edn->outbound-opts :default [opts] opts)
 
 (defmethod mk-outbound :block [{:keys [block-ms] :or {block-ms 3000}} _host _port callback]
-  (Thread/sleep ^long block-ms)
+  (when (pos? block-ms)
+    (Thread/sleep ^long block-ms))
   (net/mk-client {:type :null} callback))
 
 (defmethod mk-outbound :direct [_opts host port callback]
