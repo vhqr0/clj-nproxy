@@ -3,6 +3,8 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (defn unpack-header
   "Unpack text to header kv."
   [^String s]

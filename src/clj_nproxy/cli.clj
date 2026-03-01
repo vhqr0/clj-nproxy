@@ -5,6 +5,8 @@
             clj-nproxy.plugin.tcp
             clj-nproxy.plugin.socks5))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (def default-server-opts
   {:inbound {:type :proxy
              :net-opts {:type :tcp :port 1080}

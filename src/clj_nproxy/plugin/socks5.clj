@@ -3,6 +3,8 @@
             [clj-nproxy.proxy :as proxy])
   (:import [java.net InetAddress]))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (def st-str (-> (st/->st-var-bytes st/st-ubyte) st/wrap-str))
 
 (defn wrap-ip

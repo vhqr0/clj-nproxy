@@ -7,6 +7,8 @@
             [clj-nproxy.proxy :as proxy]
             [clj-nproxy.plugin.socks5 :as socks5]))
 
+(set! clojure.core/*warn-on-reflection* true)
+
 (def st-req
   (st/keys
    :auth st/st-http-line
