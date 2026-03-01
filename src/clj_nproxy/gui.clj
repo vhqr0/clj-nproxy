@@ -34,7 +34,9 @@
                    (windowClosed [_ _] (.stop timer))
                    (windowClosing [_ _] (.stop timer))
                    (windowActivated [_ _])
-                   (windowDeactivated [_ _]))]
+                   (windowDeactivated [_ _])
+                   (windowIconified [_ _])
+                   (windowDeiconified [_ _]))]
     (.addWindowListener window listener)))
 
 ;;; table
