@@ -8,11 +8,6 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
-(defn eof-error
-  "Construct eof error."
-  []
-  (ex-info "eof error" {:reason ::eof-error}))
-
 (defn data-error
   "Construct data error."
   []
@@ -50,7 +45,7 @@
   (let [is (ByteArrayInputStream. b)
         data (read-struct st is)]
     (if-not (zero? (.available is))
-      (throw (data-error))
+      (throw (ex-info "data surplus" {:reason ::data-surplus}))
       data)))
 
 (defn pack
@@ -116,6 +111,24 @@
 (comment
   (seq (pack (wrap-many-struct (->st-var-bytes st-ubyte) st-ushort-be) [1 2])) ; => [4 0 1 0 2]
   (unpack (wrap-many-struct (->st-var-bytes st-ubyte) st-ushort-be) (byte-array [4 0 1 0 2])) ; => [1 2]
+  )
+
+(defn wrap-validator
+  "Wrap validator.
+  validator:
+  - data valid: return true.
+  - data invalid: return false, or throw custom exception."
+  [st validator]
+  (let [valid-fn (fn [data]
+                   (if (validator data)
+                     data
+                     (throw (ex-info "invalid data" {:reason ::invalid-data}))))]
+    (-> st (wrap valid-fn valid-fn))))
+
+^:rct/test
+(comment
+  (seq (pack (wrap-validator st-byte pos?) 1)) ; => [1]
+  (unpack (wrap-validator st-byte pos?) (byte-array [1])) ; => 1
   )
 
 (defn read-tuple
@@ -208,7 +221,7 @@
   (write-struct [_ os data]
     (if (= len (count data))
       (write-coll os st data)
-      (throw (data-error)))))
+      (throw (ex-info "invalid length" {:reason ::invalid-length})))))
 
 (defn coll-of
   "Construct coll struct."
@@ -260,7 +273,7 @@
         b
         (let [n (.read is b off (- len off))]
           (if (= -1 n)
-            (throw (eof-error))
+            (throw (ex-info "end of file" {:reason ::end-of-file}))
             (recur (+ n off))))))))
 
 (defrecord BytesStruct [^long len]
@@ -269,7 +282,7 @@
   (write-struct [_ os data]
     (if (= len (b/length data))
       (write os data)
-      (throw (data-error)))))
+      (throw (ex-info "invalid length" {:reason ::invalid-length})))))
 
 (defn ->st-bytes
   "Construct bytes struct."
@@ -324,7 +337,7 @@
   ^long [^InputStream is]
   (let [n (.read is)]
     (if (= -1 n)
-      (throw (eof-error))
+      (throw (ex-info "end of file" {:reason ::end-of-file}))
       n)))
 
 (defn read-byte

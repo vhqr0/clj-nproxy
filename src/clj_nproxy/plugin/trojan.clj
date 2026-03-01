@@ -20,12 +20,35 @@
     (st/flush os)
     (callback {:input-stream is :output-stream os})))
 
+(defn valid-auth
+  "Valid request auth."
+  [{req-auth :auth :as req} auth]
+  (if (= auth req-auth)
+    req
+    (throw (ex-info "invalid auth" {:reason ::invalid-auth :auth req-auth}))))
+
+(defn valid-cmd
+  "Valid request cmd."
+  [{:keys [cmd] :as req}]
+  (if (= cmd 1)
+    req
+    (throw (ex-info "invalid cmd" {:reason ::invalid-cmd :cmd cmd}))))
+
+(defn valid-rsv
+  "Valid request rsv."
+  [{:keys [rsv] :as req}]
+  (if (= rsv "")
+    req
+    (throw (ex-info "addr surplus" {:reason ::addr-surplus}))))
+
 (defmethod proxy/mk-server :trojan [{:keys [auth]} client callback]
   (let [{is :input-stream os :output-stream} client
-        {:keys [cmd rsv] {:keys [host port]} :addr :as req} (st/read-struct st-req is)]
-    (if-not (and (= auth (:auth req)) (= cmd 1) (= rsv ""))
-      (throw (st/data-error))
-      (callback {:input-stream is :output-stream os :host host :port port}))))
+        {:keys [addr]} (-> (st/read-struct st-req is)
+                           (valid-auth auth)
+                           valid-cmd
+                           valid-rsv)
+        {:keys [host port]} addr]
+    (callback {:input-stream is :output-stream os :host host :port port})))
 
 (defn trojan-auth
   "Get trojan auth."

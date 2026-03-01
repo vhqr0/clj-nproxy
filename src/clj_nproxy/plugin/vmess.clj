@@ -241,49 +241,91 @@
                (crypto/aesgcm-encrypt key iv req+padding+fnv1a eaid))]
     (b/cat eaid elen nonce ereq)))
 
+(defn valid-crc32
+  "Valid crc32."
+  [ts+nonce+crc32]
+  (if (zero? (b/compare
+              (b/copy-of-range ts+nonce+crc32 12 16)
+              (crc32 (b/copy-of ts+nonce+crc32 12))))
+    ts+nonce+crc32
+    (throw (ex-info "invalid crc32" {:reason ::invalid-crc32}))))
+
+(defn valid-ts
+  "Valid ts."
+  [ts+nonce+crc32]
+  (let [ts (st/unpack st/st-long-be (b/copy-of ts+nonce+crc32 8))
+        ts-now (long (/ (System/currentTimeMillis) 1000))]
+    (if (<= (abs (- ts-now ts)) 30)
+      ts+nonce+crc32
+      (throw (ex-info "invalid ts" {:reason ::invalid-ts :ts ts :ts-now ts-now})))))
+
+(defn valid-fnv1a
+  "Valid fnv1a."
+  [req+padding+fnv1a]
+  (let [len (b/length req+padding+fnv1a)]
+    (if (zero? (b/compare
+                (b/copy-of-range req+padding+fnv1a (- len 4) len)
+                (fnv1a (b/copy-of req+padding+fnv1a (- len 4)))))
+      req+padding+fnv1a
+      (throw (ex-info "invalid fnv1a" {:reason ::invalid-fnv1a})))))
+
+(defn valid-ver
+  "Valid request ver."
+  [{:keys [ver] :as req}]
+  (if (= ver 1)
+    req
+    (throw (ex-info "invalid ver" {:reason ::invalid-ver :ver ver}))))
+
+(defn valid-cmd
+  "Valid request cmd."
+  [{:keys [cmd] :as req}]
+  (if (= cmd 1)
+    req
+    (throw (ex-info "invalid cmd" {:reason ::invalid-cmd :cmd cmd}))))
+
+(defn valid-opt
+  "Valid opt, return parsed opt."
+  [opt]
+  (if (zero? (bit-and 0xf2 opt))
+    {:use-mask? (bit-test opt 2) :use-padding? (bit-test opt 3)}
+    (throw (ex-info "invalid opt" {:reason ::invalid-opt :opt opt}))))
+
+(defn valid-sec
+  "Valid sec, return parsed sec."
+  [sec]
+  (case (long sec)
+    3 :aesgcm
+    4 :chacha20poly1305
+    (throw (ex-info "invalid sec" {:reason ::invalid-sec :sec sec}))))
+
 (defn read-req
   "Read request from stream."
   [is id]
   (let [{:keys [cmd-key auth-key]} id
         eaid (st/read-bytes is 16)
-        ts+nonce+crc32 (aesecb-decrypt auth-key eaid)]
-    (if (zero? (b/compare
-                (b/copy-of-range ts+nonce+crc32 12 16)
-                (crc32 (b/copy-of ts+nonce+crc32 12))))
-      (let [ts-diff (- (long (/ (System/currentTimeMillis) 1000))
-                       (st/unpack st/st-long-be (b/copy-of ts+nonce+crc32 8)))]
-        (if (<= (abs ts-diff) 30)
-          (let [elen (st/read-bytes is 18)
-                nonce (st/read-bytes is 8)
-                len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
-                          iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
-                          b (crypto/aesgcm-decrypt key iv elen eaid)]
-                      (st/unpack-ushort-be b))
-                ereq (st/read-bytes is (+ 16 len))
-                req+padding+fnv1a (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
-                                        iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
-                                    (crypto/aesgcm-decrypt key iv ereq eaid))]
-            (if (zero? (b/compare
-                        (b/copy-of-range req+padding+fnv1a (- len 4) len)
-                        (fnv1a (b/copy-of req+padding+fnv1a (- len 4)))))
-              (let [bais (ByteArrayInputStream. (b/copy-of req+padding+fnv1a (- len 4)))
-                    {:keys [ver iv key verify opt plen+sec cmd port host]} (st/read-struct st-req bais)]
-                (if (and (= ver 1) (= cmd 1) (zero? (bit-and 0xf2 opt)) (bit-test opt 0))
-                  (let [use-mask? (bit-test opt 2)
-                        use-padding? (bit-test opt 3)
-                        sec (case (bit-and 0xf plen+sec) 3 :aesgcm 4 :chacha20poly1305)
-                        plen (bit-shift-right plen+sec 4)
-                        padding (st/read-bytes bais plen)]
-                    (if (zero? (.available bais))
-                      (let [rkey (b/copy-of (crypto/sha256 key) 16)
-                            riv (b/copy-of (crypto/sha256 iv) 16)
-                            params {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
-                                    :sec sec :use-mask? use-mask? :use-padding? use-padding?}]
-                        [host port params eaid])
-                      (throw (st/data-error))))
-                  (throw (st/data-error))))
-              (throw (st/data-error))))
-          (throw (st/data-error))))
+        ts+nonce+crc32 (-> (aesecb-decrypt auth-key eaid) valid-crc32 valid-ts)
+        elen (st/read-bytes is 18)
+        nonce (st/read-bytes is 8)
+        len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
+                  iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
+                  b (crypto/aesgcm-decrypt key iv elen eaid)]
+              (st/unpack-ushort-be b))
+        ereq (st/read-bytes is (+ 16 len))
+        req+padding+fnv1a (-> (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
+                                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
+                                (crypto/aesgcm-decrypt key iv ereq eaid))
+                              valid-fnv1a)
+        bais (ByteArrayInputStream. (b/copy-of req+padding+fnv1a (- len 4)))
+        {:keys [iv key verify opt plen+sec port host]} (-> (st/read-struct st-req bais) valid-ver valid-cmd)
+        padding (st/read-bytes bais (bit-shift-right plen+sec 4))
+        sec (valid-sec (bit-and 0xf plen+sec))
+        {:keys [use-mask? use-padding?]} (valid-opt opt)
+        rkey (b/copy-of (crypto/sha256 key) 16)
+        riv (b/copy-of (crypto/sha256 iv) 16)
+        params {:nonce nonce :key key :iv iv :rkey rkey :riv riv :verify verify :padding padding
+                :sec sec :use-mask? use-mask? :use-padding? use-padding?}]
+    (if (zero? (.available bais))
+      [host port params eaid]
       (throw (st/data-error)))))
 
 ;;;; resp
@@ -324,7 +366,7 @@
                    b (crypto/aesgcm-decrypt key iv eresp)]
                (st/unpack st-resp b))]
     (when-not (= verify (:verify resp))
-      (throw (st/data-error)))))
+      (throw (ex-info "invalid verify" {:reason ::invalid-verify})))))
 
 ;;;; stream
 
