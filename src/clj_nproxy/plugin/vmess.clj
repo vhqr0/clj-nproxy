@@ -326,7 +326,7 @@
                 :sec sec :use-mask? use-mask? :use-padding? use-padding?}]
     (if (zero? (.available bais))
       [host port params eaid]
-      (throw (st/data-error)))))
+      (throw (ex-info "req surplus" {:reason ::req-surplus})))))
 
 ;;;; resp
 

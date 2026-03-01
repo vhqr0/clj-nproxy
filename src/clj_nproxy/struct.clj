@@ -8,11 +8,6 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
-(defn data-error
-  "Construct data error."
-  []
-  (ex-info "data error" {:reason ::data-error}))
-
 (defn write
   "Write bytes to stream."
   [^OutputStream os ^bytes b]
