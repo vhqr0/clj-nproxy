@@ -4,7 +4,7 @@
             [clj-nproxy.net :as net])
   (:import [java.util Arrays]
            [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
-           [java.net InetAddress InetSocketAddress Socket ServerSocket]
+           [java.net InetAddress InetSocketAddress SocketAddress Socket ServerSocket]
            [javax.net SocketFactory ServerSocketFactory]
            [javax.net.ssl SSLSocket SSLServerSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
 
@@ -27,9 +27,12 @@
 (defn socket->peer
   "Convert socket to peer info."
   [^Socket socket]
-  (let [^InetSocketAddress addr (.getRemoteSocketAddress socket)]
-    {:host (.getHostString addr)
-     :port (.getPort addr)}))
+  (let [^SocketAddress addr (.getRemoteSocketAddress socket)]
+    (cond
+      (instance? InetSocketAddress addr)
+      (let [^InetSocketAddress addr (.getRemoteSocketAddress socket)]
+        {:host (.getHostString addr)
+         :port (.getPort addr)}))))
 
 (defn socket->callback-params
   "Convert socket to callback params."
