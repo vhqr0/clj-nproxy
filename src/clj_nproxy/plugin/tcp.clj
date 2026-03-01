@@ -61,6 +61,16 @@
   (with-open [socket socket]
     (callback (socket->callback-params socket))))
 
+(defn start-server-socket
+  "Start server socket."
+  [^ServerSocket server callback]
+  (with-open [server server]
+    (loop []
+      (let [socket (.accept server)]
+        (Thread/startVirtualThread
+         #(socket-callback socket callback)))
+      (recur))))
+
 ;;; socket channel
 
 (defn socket-channel->input-stream
@@ -99,7 +109,17 @@
   (with-open [sc sc]
     (callback (socket-channel->callback-params sc))))
 
-;;; net
+(defn start-server-socket-channel
+  "Start server socket channel."
+  [^ServerSocketChannel server callback]
+  (with-open [server server]
+    (loop []
+      (let [sc (.accept server)]
+        (Thread/startVirtualThread
+         #(socket-channel-callback sc callback))
+        (recur)))))
+
+;;; tcp
 
 (defn mk-socket
   "Make tcp socket."
@@ -153,13 +173,7 @@
                                (mk-ssl-server-socket host port ssl-params)
                                (mk-server-socket host port))]
     (Thread/startVirtualThread
-     (fn []
-       (with-open [server server]
-         (loop []
-           (let [socket (.accept server)]
-             (Thread/startVirtualThread
-              #(socket-callback socket callback)))
-           (recur)))))
+     #(start-server-socket server callback))
     server))
 
 ;;; unix
@@ -175,11 +189,5 @@
         ^ServerSocketChannel server (ServerSocketChannel/open StandardProtocolFamily/UNIX)]
     (.bind server (UnixDomainSocketAddress/of path))
     (Thread/startVirtualThread
-     (fn []
-       (with-open [server server]
-         (loop []
-           (let [sc (.accept server)]
-             (Thread/startVirtualThread
-              #(socket-channel-callback sc callback))
-             (recur))))))
+     #(start-server-socket-channel server callback))
     server))
