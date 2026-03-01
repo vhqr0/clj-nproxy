@@ -4,7 +4,7 @@
             [clj-nproxy.net :as net])
   (:import [java.util Arrays]
            [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
-           [java.net InetSocketAddress Socket ServerSocket]
+           [java.net InetAddress InetSocketAddress Socket ServerSocket]
            [javax.net SocketFactory ServerSocketFactory]
            [javax.net.ssl SSLSocket SSLServerSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
 
@@ -75,15 +75,15 @@
 
 (defn mk-server-socket
   "Make tcp server socket."
-  ^ServerSocket [^long port]
+  ^ServerSocket [^String host ^long port]
   (let [^ServerSocketFactory fac (ServerSocketFactory/getDefault)]
-    (.createServerSocket fac port)))
+    (.createServerSocket fac port 0 (InetAddress/getByName host))))
 
 (defn mk-ssl-server-socket
   "Make ssl server socket."
-  ^SSLServerSocket [^long port ssl-params]
+  ^SSLServerSocket [^String host ^long port ssl-params]
   (let [^SSLServerSocketFactory fac (SSLServerSocketFactory/getDefault)
-        ^SSLServerSocket server (.createServerSocket fac port)]
+        ^SSLServerSocket server (.createServerSocket fac port 0 (InetAddress/getByName host))]
     (when-let [{:keys [alpn]} ssl-params]
       (let [^SSLParameters params (.getSSLParameters server)]
         (when (some? alpn)
@@ -92,10 +92,10 @@
     server))
 
 (defmethod net/mk-server :tcp [opts callback]
-  (let [{:keys [port ssl? ssl-params]} opts
+  (let [{:keys [host port ssl? ssl-params] :or {host "localhost"}} opts
         ^ServerSocket server (if ssl?
-                               (mk-ssl-server-socket port ssl-params)
-                               (mk-server-socket port))]
+                               (mk-ssl-server-socket host port ssl-params)
+                               (mk-server-socket host port))]
     (Thread/startVirtualThread
      (fn []
        (with-open [server server]
