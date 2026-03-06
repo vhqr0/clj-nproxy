@@ -7,7 +7,7 @@
            [java.nio.channels Channels SocketChannel ServerSocketChannel]
            [java.net InetAddress SocketAddress InetSocketAddress UnixDomainSocketAddress Socket ServerSocket StandardProtocolFamily]
            [javax.net SocketFactory ServerSocketFactory]
-           [javax.net.ssl SSLSocket SSLServerSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
+           [javax.net.ssl SSLSession SSLSocket SSLServerSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -175,6 +175,22 @@
     (Thread/startVirtualThread
      #(start-server-socket server callback))
     server))
+
+;;;; ssl utils
+
+(defn ssl-socket->certs
+  "Get peer certs from ssl socket."
+  [^SSLSocket socket]
+  (let [^SSLSession session (.getSession socket)]
+    (.getPeerCertificates session)))
+
+(defn get-certs
+  "Get peer certs."
+  [opts]
+  (net/mk-client
+   (merge {:type :tcp :port 443 :ssl? true} opts)
+   (fn [{:keys [socket]}]
+     (ssl-socket->certs socket))))
 
 ;;; unix
 
