@@ -250,10 +250,12 @@
 
 (defn bytes->cert
   "Convert bytes to certificate."
-  ^Certificate [^bytes b]
-  (let [cf (CertificateFactory/getInstance "X509")]
-    (with-open [is (ByteArrayInputStream. b)]
-      (let [cert (.generateCertificate cf is)]
-        (if (zero? (.available is))
-          cert
-          (throw (ex-info "certificate surplus" {:reason ::certificate-surplus})))))))
+  (^Certificate [^bytes b]
+   (bytes->cert "X509" b))
+  (^Certificate [^String type ^bytes b]
+   (let [fac (CertificateFactory/getInstance type)]
+     (with-open [is (ByteArrayInputStream. b)]
+       (let [cert (.generateCertificate fac is)]
+         (if (zero? (.available is))
+           cert
+           (throw (ex-info "certificate surplus" {:reason ::certificate-surplus}))))))))
