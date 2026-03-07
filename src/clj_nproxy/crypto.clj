@@ -1,10 +1,8 @@
 (ns clj-nproxy.crypto
   "Java crypto wrapper."
   (:require [clj-nproxy.bytes :as b])
-  (:import [java.io ByteArrayInputStream]
-           [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator]
+  (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator]
            [java.security.spec AlgorithmParameterSpec ECGenParameterSpec]
-           [java.security.cert Certificate CertificateFactory]
            [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
 
@@ -240,22 +238,3 @@
   (sim-sign-verify ed25519-gen ed25519-sign ed25519-verify (b/rand 16)) ; => true
   (sim-sign-verify ed448-gen ed448-sign ed448-verify (b/rand 16)) ; => true
   )
-
-;;; cert
-
-(defn cert->bytes
-  "Convert certificate to bytes."
-  ^bytes [^Certificate cert]
-  (.getEncoded cert))
-
-(defn bytes->cert
-  "Convert bytes to certificate."
-  (^Certificate [^bytes b]
-   (bytes->cert "X509" b))
-  (^Certificate [^String type ^bytes b]
-   (let [fac (CertificateFactory/getInstance type)]
-     (with-open [is (ByteArrayInputStream. b)]
-       (let [cert (.generateCertificate fac is)]
-         (if (zero? (.available is))
-           cert
-           (throw (ex-info "certificate surplus" {:reason ::certificate-surplus}))))))))
