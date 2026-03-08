@@ -2,8 +2,7 @@
   "TCP net impl."
   (:require [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])
-  (:import [java.util Arrays]
-           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
+  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.nio.channels Channels SocketChannel ServerSocketChannel]
            [java.net InetAddress SocketAddress InetSocketAddress UnixDomainSocketAddress Socket ServerSocket StandardProtocolFamily]
            [javax.net SocketFactory ServerSocketFactory]
@@ -135,8 +134,7 @@
     (when-let [{:keys [sni alpn]} ssl-params]
       (let [^SSLParameters params (.getSSLParameters socket)]
         (when (some? sni)
-          (let [sni (map #(SNIHostName. ^String %) sni)]
-            (.setServerNames params (Arrays/asList (object-array sni)))))
+          (.setServerNames params (mapv #(SNIHostName. ^String %) sni)))
         (when (some? alpn)
           (.setApplicationProtocols params (object-array alpn)))
         (.setSSLParameters socket params)))
@@ -180,19 +178,16 @@
 
 ;;;; ssl utils
 
+(defn ssl-socket->alpn
+  "Get application protocol from ssl socket."
+  ^String [^SSLSocket socket]
+  (.getApplicationProtocol socket))
+
 (defn ssl-socket->certs
   "Get peer certs from ssl socket."
   [^SSLSocket socket]
   (let [^SSLSession session (.getSession socket)]
     (.getPeerCertificates session)))
-
-(defn get-certs
-  "Get peer certs."
-  [opts]
-  (net/mk-client
-   (merge {:type :tcp :port 443 :ssl? true} opts)
-   (fn [{:keys [socket]}]
-     (ssl-socket->certs socket))))
 
 ;;; unix
 
