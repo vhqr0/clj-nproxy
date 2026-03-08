@@ -2,7 +2,7 @@
   "Java crypto wrapper."
   (:require [clj-nproxy.bytes :as b])
   (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator]
-           [java.security.spec AlgorithmParameterSpec ECGenParameterSpec]
+           [java.security.spec AlgorithmParameterSpec ECGenParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
            [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
 
@@ -147,19 +147,27 @@
 
 (defn sign
   "Sign signature."
-  ^bytes [^String algo ^PrivateKey pri ^bytes data]
-  (let [signer (doto (Signature/getInstance algo)
-                 (.initSign pri)
-                 (.update data))]
-    (.sign signer)))
+  (^bytes [^String algo ^PrivateKey pri ^bytes data]
+   (sign algo nil pri data))
+  (^bytes [^String algo ^AlgorithmParameterSpec params ^PrivateKey pri ^bytes data]
+   (let [signer (Signature/getInstance algo)]
+     (when (some? params)
+       (.setParameter signer params))
+     (.initSign signer pri)
+     (.update signer data)
+     (.sign signer))))
 
 (defn verify
   "Verify signature."
-  ^Boolean [^String algo ^PublicKey pub ^bytes data ^bytes sig]
-  (let [verifier (doto (Signature/getInstance algo)
-                   (.initVerify pub)
-                   (.update data))]
-    (.verify verifier sig)))
+  (^Boolean [^String algo ^PublicKey pub ^bytes data ^bytes sig]
+   (verify algo nil pub data sig))
+  (^Boolean [^String algo ^AlgorithmParameterSpec params ^PublicKey pub ^bytes data ^bytes sig]
+   (let [verifier (Signature/getInstance algo)]
+     (when (some? params)
+       (.setParameter verifier params))
+     (.initVerify verifier pub)
+     (.update verifier data)
+     (.verify verifier sig))))
 
 (defn agreement
   "Key agreement."
@@ -237,4 +245,43 @@
   (sim-sign-verify secp521r1-gen secp521r1-sha512-sign secp521r1-sha512-verify (b/rand 16)) ; => true
   (sim-sign-verify ed25519-gen ed25519-sign ed25519-verify (b/rand 16)) ; => true
   (sim-sign-verify ed448-gen ed448-sign ed448-verify (b/rand 16)) ; => true
+  )
+
+;;;; rsa
+
+(defn rsa-gen-params
+  "Make rsa generation params."
+  ^AlgorithmParameterSpec [key-size]
+  (RSAKeyGenParameterSpec. key-size RSAKeyGenParameterSpec/F4))
+
+(def rsa-sha256-gen (fn [] (kp-gen "RSA" (rsa-gen-params 2048))))
+(def rsa-sha384-gen (fn [] (kp-gen "RSA" (rsa-gen-params 3072))))
+(def rsa-sha512-gen (fn [] (kp-gen "RSA" (rsa-gen-params 4096))))
+
+(def rsa-pkcs1-sha256-sign (partial sign "SHA256withRSA"))
+(def rsa-pkcs1-sha384-sign (partial sign "SHA384withRSA"))
+(def rsa-pkcs1-sha512-sign (partial sign "SHA512withRSA"))
+(def rsa-pkcs1-sha256-verify (partial verify "SHA256withRSA"))
+(def rsa-pkcs1-sha384-verify (partial verify "SHA384withRSA"))
+(def rsa-pkcs1-sha512-verify (partial verify "SHA512withRSA"))
+
+(defn pss-params
+  "Make pss params."
+  ^AlgorithmParameterSpec [algo]
+  (case algo
+    :sha256 (PSSParameterSpec. "SHA-256" "MGF1" MGF1ParameterSpec/SHA256 32 1)
+    :sha384 (PSSParameterSpec. "SHA-384" "MGF1" MGF1ParameterSpec/SHA384 32 1)
+    :sha512 (PSSParameterSpec. "SHA-512" "MGF1" MGF1ParameterSpec/SHA512 32 1)))
+
+(def rsa-pss-rsae-sha256-sign (fn [pri data] (sign "RSASSA-PSS" (pss-params :sha256) pri data)))
+(def rsa-pss-rsae-sha384-sign (fn [pri data] (sign "RSASSA-PSS" (pss-params :sha384) pri data)))
+(def rsa-pss-rsae-sha512-sign (fn [pri data] (sign "RSASSA-PSS" (pss-params :sha512) pri data)))
+(def rsa-pss-rsae-sha256-verify (fn [pub data sig] (verify "RSASSA-PSS" (pss-params :sha256) pub data sig)))
+(def rsa-pss-rsae-sha384-verify (fn [pub data sig] (verify "RSASSA-PSS" (pss-params :sha384) pub data sig)))
+(def rsa-pss-rsae-sha512-verify (fn [pub data sig] (verify "RSASSA-PSS" (pss-params :sha512) pub data sig)))
+
+^:rct/test
+(comment
+  (sim-sign-verify rsa-sha256-gen rsa-pkcs1-sha256-sign rsa-pkcs1-sha256-verify (b/rand 16)) ; => true
+  (sim-sign-verify rsa-sha256-gen rsa-pss-rsae-sha256-sign rsa-pss-rsae-sha256-verify (b/rand 16)) ; => true
   )
