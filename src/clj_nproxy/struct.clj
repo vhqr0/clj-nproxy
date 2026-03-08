@@ -8,6 +8,11 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
+(defn read-all
+  "Read all bytes."
+  ^bytes [^InputStream is]
+  (.readAllBytes is))
+
 (defn write
   "Write bytes to stream."
   [^OutputStream os ^bytes b]
