@@ -160,8 +160,10 @@
   ^SSLServerSocket [^String host ^long port ssl-params]
   (let [^SSLServerSocketFactory fac (SSLServerSocketFactory/getDefault)
         ^SSLServerSocket server (.createServerSocket fac port 0 (InetAddress/getByName host))]
-    (when-let [{:keys [alpn]} ssl-params]
+    (when-let [{:keys [client-auth? alpn]} ssl-params]
       (let [^SSLParameters params (.getSSLParameters server)]
+        (when client-auth?
+          (.setNeedClientAuth params true))
         (when (some? alpn)
           (.setApplicationProtocols params (object-array alpn)))
         (.setSSLParameters server params)))
