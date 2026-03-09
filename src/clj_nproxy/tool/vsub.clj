@@ -86,7 +86,7 @@
 (defn read-nodes
   "Read nodes."
   [opts]
-  (let [sub (config/read-text opts "sub.txt")]
+  (let [sub (config/read-str opts "sub.txt")]
     (->> sub sub->nodes)))
 
 (defn print-nodes
@@ -103,7 +103,7 @@
 (defn fetch
   "Fetch sub then read and print nodes."
   [opts]
-  (let [url (str/trim (config/read-text opts "sub.url"))
+  (let [url (str/trim (config/read-str opts "sub.url"))
         sub (str/trim (slurp url))]
     (config/write opts "sub.txt" sub)
     (list opts)))
