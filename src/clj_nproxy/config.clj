@@ -1,6 +1,5 @@
 (ns clj-nproxy.config
   "Config IO utils."
-  (:refer-clojure :exclude [write])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clj-nproxy.struct :as st]

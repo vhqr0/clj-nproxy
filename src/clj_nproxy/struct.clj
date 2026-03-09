@@ -1,6 +1,6 @@
 (ns clj-nproxy.struct
   "Structure IO utils."
-  (:refer-clojure :exclude [write flush keys])
+  (:refer-clojure :exclude [flush keys])
   (:require [clj-nproxy.bytes :as b])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
            [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream PipedInputStream PipedOutputStream]
