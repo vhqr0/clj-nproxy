@@ -8,11 +8,11 @@
   (is (some? (st/sim-conn
               (fn [server]
                 (ws/mk-client
-                 nil server
+                 server nil
                  (fn [server]
                    (proxy/mk-client {:type :http} server "example.com" 80 (fn [_])))))
               (fn [client]
                 (ws/mk-server
-                 nil client
+                 client nil
                  (fn [client]
                    (proxy/mk-server {:type :http} client (fn [_])))))))))

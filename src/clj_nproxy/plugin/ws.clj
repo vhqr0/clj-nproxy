@@ -157,7 +157,7 @@
 
 (defn mk-client
   "Make websocket client."
-  [opts server callback]
+  [server opts callback]
   (let [{is :input-stream os :output-stream} server
         {:keys [path headers] :or {path "/"}} opts
         key (key-gen)
@@ -181,7 +181,7 @@
 
 (defn mk-server
   "Make websocket server."
-  [opts client callback]
+  [client opts callback]
   (let [{is :input-stream os :output-stream} client
         {:keys [headers]} opts
         req (-> (st/read-struct http/st-http-req is)
@@ -206,7 +206,7 @@
    (assoc opts :type :tcp)
    (fn [tcp-server]
      (mk-client
-      opts tcp-server
+      tcp-server opts
       (fn [ws-server]
         (callback (merge tcp-server ws-server)))))))
 
@@ -215,6 +215,6 @@
    (assoc opts :type :tcp)
    (fn [tcp-client]
      (mk-server
-      opts tcp-client
+      tcp-client opts
       (fn [ws-client]
         (callback (merge tcp-client ws-client)))))))
