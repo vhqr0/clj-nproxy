@@ -1,4 +1,5 @@
 (ns clj-nproxy.plugin.tls13.cert
+  "TLS 1.3 cert utils."
   (:require [clj-nproxy.plugin.tls13.struct :as tls13-st])
   (:import [java.security PublicKey]
            [java.security.cert X509Certificate]))
