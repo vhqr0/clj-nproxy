@@ -3,8 +3,8 @@
   - origin: https://github.com/v2fly/domain-list-community
   - fork: https://github.com/vhqr0/domain-list-community"
   (:require [clojure.string :as str]
-            [clj-nproxy.config :as config])
-  (:import [java.io File]))
+            [clojure.java.io :as io]
+            [clj-nproxy.config :as config]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -12,7 +12,7 @@
   "Get data file by name."
   [opts name]
   (let [{:keys [data-dir] :or {data-dir ".nproxy/domain-list-community/data"}} opts]
-    (File. (str data-dir "/" name))))
+    (io/as-file (str data-dir "/" name))))
 
 (defn trim-comments
   "Trim comments."

@@ -1,8 +1,8 @@
 (ns clj-nproxy.config
   "Config IO utils."
   (:refer-clojure :exclude [write])
-  (:require [clojure.edn :as edn])
-  (:import [java.io File]))
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -10,7 +10,7 @@
   "Get config file by name."
   [opts name]
   (let [{:keys [config-dir] :or {config-dir ".nproxy"}} opts]
-    (File. (str config-dir "/" name))))
+    (io/as-file (str config-dir "/" name))))
 
 (defn read-text
   "Read text from config file."
