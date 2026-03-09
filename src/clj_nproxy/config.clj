@@ -42,8 +42,9 @@
   "Read trust store from config file."
   [opts {:keys [name aliases password]}]
   (let [ks (-> (read-bytes opts name) (ks/bytes->key-store password))
-        aliases (or aliases (ks/key-store->aliases ks))]
-    (->> aliases (keep (partial ks/key-store->cert ks)) vec)))
+        aliases (or aliases (ks/key-store->aliases ks))
+        certs (->> aliases (keep (partial ks/key-store->cert ks)) vec)]
+    {:certs certs}))
 
 (declare read-edn)
 

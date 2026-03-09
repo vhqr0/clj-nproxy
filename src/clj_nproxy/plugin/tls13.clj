@@ -4,7 +4,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.plugin.tls13.struct :as tls13-st]
             [clj-nproxy.plugin.tls13.context :as tls13-ctx])
-  (:import [java.io BufferedInputStream BufferedOutputStream]))
+  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -25,7 +25,7 @@
 
 (defn wrap-input-stream
   "Wrap input stream."
-  [is acontext]
+  ^InputStream [^InputStream is acontext]
   (let [read-fn (fn []
                   (let [{:keys [recv-bytes read-close?]} @acontext]
                     (if (seq recv-bytes)
@@ -43,7 +43,7 @@
 
 (defn wrap-output-stream
   "Wrap output stream."
-  [os acontext]
+  ^OutputStream [^OutputStream os acontext]
   (let [write-fn (fn [b]
                    (when-not (zero? (b/length b))
                      (when (:key-update? @acontext)
@@ -64,15 +64,41 @@
                      (st/close os)))]
     (BufferedOutputStream. (st/write-fn->output-stream write-fn close-fn))))
 
-(defn wrap-stream
+(defn mk-stream
   "Wrap tls13 on stream."
-  ([stream context]
-   (wrap-stream stream context identity))
-  ([{is :input-stream os :output-stream :as stream} context handshake-callback]
-   (let [context (handshake stream context)
-         ;; valid server name, certificate list, etc
-         context (handshake-callback context)
-         acontext (atom context)]
-     {:acontext acontext
-      :input-stream (wrap-input-stream is acontext)
-      :output-stream (wrap-output-stream os acontext)})))
+  [{is :input-stream os :output-stream :as stream} context callback]
+  (let [context (handshake stream context)
+        acontext (atom context)]
+    (with-open [is (wrap-input-stream is acontext)
+                os (wrap-output-stream os acontext)]
+      (callback {:acontext acontext :input-stream is :output-stream os}))))
+
+(defn mk-client
+  "Make tls13 client."
+  [server opts callback]
+  (let [{:keys [key-store trust-store]} opts
+        ca-certificate-list (:certs trust-store)
+        client-certificate-list (->> (:certs key-store) (map (fn [certificate] {:certificate certificate})))
+        client-private-key (:pri key-store)
+        opts (merge
+              opts
+              {:ca-certificate-list ca-certificate-list
+               :client-certificate-list client-certificate-list
+               :client-private-key client-private-key})
+        context (tls13-ctx/->client-context opts)]
+    (mk-stream server context callback)))
+
+(defn mk-server
+  "Make tls13 server."
+  [client opts callback]
+  (let [{:keys [key-store trust-store]} opts
+        ca-certificate-list (:certs trust-store)
+        server-certificate-list (->> (:certs key-store) (map (fn [certificate] {:certificate certificate})))
+        server-private-key (:pri key-store)
+        opts (merge
+              opts
+              {:ca-certificate-list ca-certificate-list
+               :server-certificate-list server-certificate-list
+               :server-private-key server-private-key})
+        context (tls13-ctx/->server-context opts)]
+    (mk-stream client context callback)))
