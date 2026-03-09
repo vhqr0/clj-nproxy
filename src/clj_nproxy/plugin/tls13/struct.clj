@@ -1,4 +1,5 @@
 (ns clj-nproxy.plugin.tls13.struct
+  "TLS 1.3 struct definitions."
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]))
 

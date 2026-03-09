@@ -1,4 +1,5 @@
 (ns clj-nproxy.plugin.tls13.crypto
+  "TLS 1.3 crypto definitions."
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto :as crypto]
