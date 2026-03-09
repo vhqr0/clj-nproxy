@@ -4,8 +4,7 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto.keystore :as ks]
             [clj-nproxy.plugin.tls13.struct :as tls13-st]
-            [clj-nproxy.plugin.tls13.crypto :as tls13-crypto]
-            [clj-nproxy.plugin.tls13.cert :as tls13-cert]))
+            [clj-nproxy.plugin.tls13.crypto :as tls13-crypto]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -274,7 +273,7 @@
                           :client tls13-st/client-signature-context-string
                           :server tls13-st/server-signature-context-string)
                         (apply tls13-crypto/digest cipher-suite handshake-msgs))
-        algorithm (tls13-cert/cert->scheme certificate)
+        algorithm (tls13-crypto/cert->scheme certificate)
         signature (tls13-crypto/sign algorithm private-key signature-data)]
     (send-handshake-ciphertext
      context tls13-st/handshake-type-certificate-verify
@@ -300,7 +299,7 @@
       context
       (if (seq certificate-chain)
         (if (<= (count certificate-chain) max-certificate-path)
-          (if (tls13-cert/valid-cert-chain? certificate-chain)
+          (if (tls13-crypto/valid-cert-chain? certificate-chain)
             (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
               context
               (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate-list})))
@@ -352,7 +351,7 @@
                                   :client tls13-st/server-signature-context-string
                                   :server tls13-st/client-signature-context-string)
                                 (apply tls13-crypto/digest cipher-suite (butlast handshake-msgs)))]
-            (if (tls13-crypto/verify algorithm (tls13-cert/cert->pub certificate) signature-data signature)
+            (if (tls13-crypto/verify algorithm (tls13-crypto/cert->pub certificate) signature-data signature)
               context
               (throw (ex-info "invalid signature" {:reason ::invalid-signature}))))
           (throw (ex-info "invalid signature algorithm" {:reason ::invalid-signature-algorithm :signature-algorithm algorithm}))))
