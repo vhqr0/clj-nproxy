@@ -59,11 +59,11 @@
   (^Certificate [^bytes b]
    (bytes->cert "X509" b))
   (^Certificate [^String type ^bytes b]
-   (with-open [is (ByteArrayInputStream. b)]
-     (let [cert (read-cert type is)]
-       (if (zero? (.available is))
-         cert
-         (throw (ex-info "certificate surplus" {:reason ::certificate-surplus})))))))
+   (let [is (ByteArrayInputStream. b)
+         cert (read-cert type is)]
+     (if (zero? (.available is))
+       cert
+       (throw (ex-info "certificate surplus" {:reason ::certificate-surplus}))))))
 
 ;;; key store
 
@@ -82,11 +82,11 @@
   (^KeyStore [^bytes b ^String password]
    (bytes->key-store "PKCS12" b password))
   (^KeyStore [^String type ^bytes b ^String password]
-   (with-open [is (ByteArrayInputStream. b)]
-     (let [key-store (read-key-store type is password)]
-       (if (zero? (.available is))
-         key-store
-         (throw (ex-info "key store surplus" {:reason ::key-store-surplus})))))))
+   (let [is (ByteArrayInputStream. b)
+         key-store (read-key-store type is password)]
+     (if (zero? (.available is))
+       key-store
+       (throw (ex-info "key store surplus" {:reason ::key-store-surplus}))))))
 
 (defn key-store->aliases
   "Get key store aliases."
