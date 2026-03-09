@@ -4,7 +4,8 @@
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto.keystore :as ks]
             [clj-nproxy.plugin.tls13.struct :as tls13-st]
-            [clj-nproxy.plugin.tls13.crypto :as tls13-crypto]))
+            [clj-nproxy.plugin.tls13.crypto :as tls13-crypto]
+            [clj-nproxy.plugin.tls13.cert :as tls13-cert]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -273,7 +274,7 @@
                           :client tls13-st/client-signature-context-string
                           :server tls13-st/server-signature-context-string)
                         (apply tls13-crypto/digest cipher-suite handshake-msgs))
-        algorithm (tls13-crypto/cert->signature-scheme certificate)
+        algorithm (tls13-cert/cert->scheme certificate)
         signature (tls13-crypto/sign algorithm private-key signature-data)]
     (send-handshake-ciphertext
      context tls13-st/handshake-type-certificate-verify
@@ -288,6 +289,24 @@
     (-> context
         (send-certificate certificate-list)
         (send-certificate-verify certificate-list private-key))))
+
+(defn verify-certificate-list
+  "Verify certificate list."
+  [context certificate-list]
+  (let [{:keys [verify-certificate-list? ca-certificate-list max-certificate-path]
+         :or {verify-certificate-list? true max-certificate-path 4}} context
+        certificate-chain (->> certificate-list (map :certificate))]
+    (if-not verify-certificate-list?
+      context
+      (if (seq certificate-chain)
+        (if (<= (count certificate-chain) max-certificate-path)
+          (if (tls13-cert/valid-cert-chain? certificate-chain)
+            (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
+              context
+              (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate-list})))
+            (throw (ex-info "invalid certificate chain" {:reason ::invalid-certificate-chain})))
+          (throw (ex-info "invalid certificate path" {:reason ::invalid-certificate-path})))
+        (throw (ex-info "empty certificate chain" {:reason ::empty-certificate-chain}))))))
 
 (defn recv-certificate-plaintext
   "Recv certificate plaintext."
@@ -305,7 +324,9 @@
                                 (fn [{:keys [cert-data extensions]}]
                                   {:certificate (ks/bytes->cert cert-data)
                                    :extensions extensions})))]
-     (assoc context certificate-list-key certificate-list))))
+     (-> context
+         (verify-certificate-list certificate-list)
+         (assoc certificate-list-key certificate-list)))))
 
 (defn recv-certificate
   "Recv certificate."
@@ -331,7 +352,7 @@
                                   :client tls13-st/server-signature-context-string
                                   :server tls13-st/client-signature-context-string)
                                 (apply tls13-crypto/digest cipher-suite (butlast handshake-msgs)))]
-            (if (tls13-crypto/verify algorithm (tls13-crypto/cert->pub certificate) signature-data signature)
+            (if (tls13-crypto/verify algorithm (tls13-cert/cert->pub certificate) signature-data signature)
               context
               (throw (ex-info "invalid signature" {:reason ::invalid-signature}))))
           (throw (ex-info "invalid signature algorithm" {:reason ::invalid-signature-algorithm :signature-algorithm algorithm}))))
