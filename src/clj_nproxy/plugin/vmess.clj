@@ -8,7 +8,7 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.proxy :as proxy])
   (:import [java.util.zip CRC32]
-           [java.io BufferedInputStream BufferedOutputStream ByteArrayInputStream]
+           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream ByteArrayInputStream]
            [java.security MessageDigest]
            [org.bouncycastle.crypto.digests SHAKEDigest]))
 
@@ -416,7 +416,7 @@
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
-  [is params key iv & [pre-fn]]
+  ^InputStream [^InputStream is params key iv & [pre-fn]]
   (let [{:keys [sec use-mask? use-padding?]} params
         key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
@@ -437,7 +437,7 @@
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
-  [os params key iv & [pre-fn]]
+  ^OutputStream [^OutputStream os params key iv & [pre-fn]]
   (let [{:keys [sec use-mask? use-padding?]} params
         key (sec-key sec key)
         read-shake-fn (iv->read-shake-fn iv)
@@ -467,17 +467,17 @@
         {:keys [key iv rkey riv] :as params} (->params opts)
         pre-read-fn #(read-resp is params)
         pre-write-fn #(st/write os (->ereq id params host port))]
-    (callback
-     {:input-stream (wrap-input-stream is params rkey riv pre-read-fn)
-      :output-stream (wrap-output-stream os params key iv pre-write-fn)})))
+    (with-open [is (wrap-input-stream is params rkey riv pre-read-fn)
+                os (wrap-output-stream os params key iv pre-write-fn)]
+      (callback {:input-stream is :output-stream os}))))
 
 (defmethod proxy/mk-server :vmess [{:keys [id]} client callback]
   (let [{is :input-stream os :output-stream} client
         [host port {:keys [key iv rkey riv] :as params} _eaid] (read-req is id)
         pre-write-fn #(st/write os (->eresp params))]
-    (callback
-     {:input-stream (wrap-input-stream is params key iv)
-      :output-stream (wrap-output-stream os params rkey riv pre-write-fn)})))
+    (with-open [is (wrap-input-stream is params key iv)
+                os (wrap-output-stream os params rkey riv pre-write-fn)]
+      (callback {:input-stream is :output-stream os}))))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))

@@ -18,7 +18,9 @@
         (fn [{is :input-stream os :output-stream}]
           (st/write os (b/rand 4))
           (st/flush os)
-          (st/read-bytes is 4))))
+          (st/read-bytes is 4)
+          (st/close os)
+          (st/read-all is))))
      (fn [client]
        (proxy/mk-server
         (proxy/edn->server-opts {:type :vmess :uuid uuid})
@@ -26,7 +28,9 @@
         (fn [{is :input-stream os :output-stream}]
           (let [b (st/read-bytes is 4)]
             (st/write os b)
-            (st/flush os))))))))
+            (st/flush os)
+            (st/close os)
+            (st/read-all is))))))))
 
 (deftest vmess-test
   (is (some? (sim-vmess {})))
