@@ -6,7 +6,7 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.net :as net]
             [clj-nproxy.plugin.http :as http])
-  (:import [java.io BufferedInputStream BufferedOutputStream]))
+  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -89,7 +89,7 @@
 
 (defn wrap-input-stream
   "Wrap input stream."
-  [is]
+  ^InputStream [^InputStream is]
   (let [read-fn (fn []
                   (let [{:keys [op data]} (read-frame is)]
                     (case (int op)
@@ -104,7 +104,7 @@
 
 (defn wrap-output-stream
   "Wrap output stream."
-  [os mask?]
+  ^OutputStream [^OutputStream os mask?]
   (let [write-frame-fn (fn [op data]
                          (write-frame os {:op op :fin? true :mask (when mask? (b/rand 4)) :data data})
                          (st/flush os))
@@ -116,6 +116,13 @@
                    (st/close os))]
     (BufferedOutputStream.
      (st/write-fn->output-stream write-fn close-fn))))
+
+(defn mk-stream
+  "Make websocket stream."
+  [{is :input-stream os :output-stream} mask? info callback]
+  (with-open [is (wrap-input-stream is)
+              os (wrap-output-stream os mask?)]
+    (callback (merge info {:input-stream is :output-stream os}))))
 
 (def ws-uuid
   "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
@@ -174,10 +181,7 @@
                    (http/valid-status "101")
                    valid-connection
                    (valid-accept key))]
-      (callback
-       {:http-resp resp
-        :input-stream (wrap-input-stream is)
-        :output-stream (wrap-output-stream os true)}))))
+      (mk-stream server true {:http-resp resp} callback))))
 
 (defn mk-server
   "Make websocket server."
@@ -196,10 +200,7 @@
                   "sec-websocket-accept" accept})]
     (st/write-struct http/st-http-resp os {:status "101" :reason "Switching Protocols" :headers headers})
     (st/flush os)
-    (callback
-     {:http-req req
-      :input-stream (wrap-input-stream is)
-      :output-stream (wrap-output-stream os false)})))
+    (mk-stream client false {:http-req req} callback)))
 
 (defmethod net/mk-client :ws [opts callback]
   (net/mk-client
