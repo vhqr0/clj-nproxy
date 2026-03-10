@@ -476,7 +476,7 @@
   "Convert read fn to input stream.
   read-fn:
   - not eof: return non-empty bytes.
-  - eof: return empty bytes nil or throw exception."
+  - eof: return empty bytes or nil."
   ^InputStream [read-fn & [close-fn]]
   (let [vbuf (volatile! (ByteBuffer/allocate 0))
         ensure-data-fn (fn []
@@ -484,7 +484,7 @@
                            (if-not (zero? remain)
                              remain
                              (do
-                               (when-let [ba (try (read-fn) (catch Exception _))]
+                               (when-let [ba (read-fn)]
                                  (vreset! vbuf (ByteBuffer/wrap (bytes ba))))
                                (.remaining ^ByteBuffer @vbuf)))))
         read-byte-fn (fn []
