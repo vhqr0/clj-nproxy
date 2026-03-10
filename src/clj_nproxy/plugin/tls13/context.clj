@@ -1,6 +1,7 @@
 (ns clj-nproxy.plugin.tls13.context
   "TLS 1.3 context logic."
-  (:require [clj-nproxy.bytes :as b]
+  (:require [clojure.set :as set]
+            [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto.keystore :as ks]
             [clj-nproxy.plugin.tls13.struct :as tls13-st]
@@ -250,44 +251,65 @@
       :application-decryptor application-decryptor
       :application-encryptor application-encryptor})))
 
+(defn unpack-extension-signature-algorithms
+  "Unpack signature algorithms extension."
+  [context extension]
+  (let [signature-algorithms (st/unpack tls13-st/st-extension-signature-algorithms extension)
+        {:keys [mode]} context
+        [certificate-list-key signature-algorithm-key]
+        (case mode
+          :client [:client-certificate-list :client-signature-algorithm]
+          :server [:server-certificate-list :server-signature-algorithm])
+        certificate (-> context (get certificate-list-key) first :certificate)
+        supported-signature-algorithms (set/intersection
+                                        (set (:signature-algorithms context))
+                                        (-> certificate tls13-crypto/cert->pub tls13-crypto/pub->signature-schemes))]
+    (if-let [signature-algorithm (->> signature-algorithms (some supported-signature-algorithms))]
+      (assoc context signature-algorithm-key signature-algorithm)
+      (throw (ex-info "invalid signature algorithms" {:reason ::invalid-signature-algorithms :signature-algorithms signature-algorithms})))))
+
 (defn send-certificate
   "Send certificate."
-  [context certificate-list]
-  (send-handshake-ciphertext
-   context tls13-st/handshake-type-certificate
-   (st/pack tls13-st/st-handshake-certificate
-            {:certificate-request-context (byte-array 0)
-             :certificate-list (->> certificate-list
-                                    (map
-                                     (fn [{:keys [certificate extensions]}]
-                                       {:cert-data (ks/cert->bytes certificate)
-                                        :extensions extensions})))})))
+  [context]
+  (let [{:keys [mode]} context
+        certificate-list-key (case mode
+                               :client :client-certificate-list
+                               :server :server-certificate-list)]
+    (send-handshake-ciphertext
+     context tls13-st/handshake-type-certificate
+     (st/pack tls13-st/st-handshake-certificate
+              {:certificate-request-context (byte-array 0)
+               :certificate-list (->> (get context certificate-list-key)
+                                      (map
+                                       (fn [{:keys [certificate extensions]}]
+                                         {:cert-data (ks/cert->bytes certificate)
+                                          :extensions extensions})))}))))
 
 (defn send-certificate-verify
   "Send certificate verify."
-  [context certificate-list private-key]
+  [context]
   (let [{:keys [mode cipher-suite handshake-msgs]} context
-        certificate (:certificate (first certificate-list))
+        [certificate-list-key private-key signature-algorithm-key]
+        (case mode
+          :client [:client-certificate-list :client-private-key :client-signature-algorithm]
+          :server [:server-certificate-list :server-private-key :server-signature-algorithm])
+        certificate (-> context (get certificate-list-key) first :certificate)
+        private-key (get context private-key)
+        signature-algorithm (get context signature-algorithm-key)
         signature-data (tls13-st/pack-signature-data
                         (case mode
                           :client tls13-st/client-signature-context-string
                           :server tls13-st/server-signature-context-string)
                         (apply tls13-crypto/digest cipher-suite handshake-msgs))
-        algorithm (tls13-crypto/cert->scheme certificate)
-        signature (tls13-crypto/sign algorithm private-key signature-data)]
+        signature (tls13-crypto/sign signature-algorithm private-key signature-data)]
     (send-handshake-ciphertext
      context tls13-st/handshake-type-certificate-verify
-     (st/pack tls13-st/st-handshake-certificate-verify {:algorithm algorithm :signature signature}))))
+     (st/pack tls13-st/st-handshake-certificate-verify {:algorithm signature-algorithm :signature signature}))))
 
 (defn send-auth
   "Send auth."
-  [{:keys [mode] :as context}]
-  (let [[certificate-list private-key] (case mode
-                                         :client [(:client-certificate-list context) (:client-private-key context)]
-                                         :server [(:server-certificate-list context) (:server-private-key context)])]
-    (-> context
-        (send-certificate certificate-list)
-        (send-certificate-verify certificate-list private-key))))
+  [context]
+  (-> context send-certificate send-certificate-verify))
 
 (defn verify-certificate-list
   "Verify certificate list."
@@ -340,19 +362,16 @@
     (condp = msg-type
       tls13-st/handshake-type-certificate-verify
       (let [{:keys [mode cipher-suite signature-algorithms handshake-msgs]} context
-            certificate-list (case mode
-                               :client (:server-certificate-list context)
-                               :server (:client-certificate-list context))
-            certificate (:certificate (first certificate-list))
+            [certificate-list-key signature-algorithm-key signature-context-string]
+            (case mode
+              :client [:server-certificate-list :server-signature-algorithm tls13-st/server-signature-context-string]
+              :server [:client-certificate-list :client-signature-algorithm tls13-st/client-signature-context-string])
+            certificate (-> context (get certificate-list-key) first :certificate)
             {:keys [algorithm signature]} (st/unpack tls13-st/st-handshake-certificate-verify msg-data)]
         (if (contains? (set signature-algorithms) algorithm)
-          (let [signature-data (tls13-st/pack-signature-data
-                                (case mode
-                                  :client tls13-st/server-signature-context-string
-                                  :server tls13-st/client-signature-context-string)
-                                (apply tls13-crypto/digest cipher-suite (butlast handshake-msgs)))]
+          (let [signature-data (tls13-st/pack-signature-data signature-context-string (apply tls13-crypto/digest cipher-suite (butlast handshake-msgs)))]
             (if (tls13-crypto/verify algorithm (tls13-crypto/cert->pub certificate) signature-data signature)
-              context
+              (assoc context signature-algorithm-key algorithm)
               (throw (ex-info "invalid signature" {:reason ::invalid-signature}))))
           (throw (ex-info "invalid signature algorithm" {:reason ::invalid-signature-algorithm :signature-algorithm algorithm}))))
       (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
@@ -565,11 +584,20 @@
 
 ;;;; server certificate
 
+(defn unpack-server-certificate-request-extension-signature-algorithms
+  "Unpack signature algorithms extension."
+  [context]
+  (if-let [extension (find-extension context :server-certificate-request-extensions tls13-st/extension-type-signature-algorithms)]
+    (unpack-extension-signature-algorithms context extension)
+    (throw (ex-info "no signature algorithms" {:reason ::no-signature-algorithms}))))
+
 (defmethod recv-record :wait-server-cert-cr [context type content]
   (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
     (if (= msg-type tls13-st/handshake-type-certificate-request)
       (let [{:keys [extensions]} (st/unpack tls13-st/st-handshake-certificate-request msg-data)]
-        (merge context {:stage :wait-server-cert :client-auth? true :server-certificate-request-extensions extensions}))
+        (-> context
+            (merge {:stage :wait-server-cert :client-auth? true :server-certificate-request-extensions extensions})
+            unpack-server-certificate-request-extension-signature-algorithms))
       (-> context
           (merge {:stage :wait-server-cv})
           (recv-certificate-plaintext msg-type msg-data)))))
@@ -627,6 +655,13 @@
         context
         (throw (ex-info "invalid versions" {:reason ::invalid-versions :versions supported-versions}))))
     (throw (ex-info "no supported versions" {:reason ::no-supported-versions}))))
+
+(defn unpack-client-extension-signature-algorithms
+  "Unpack signature algorithms extension."
+  [context]
+  (if-let [extension (find-extension context :client-extensions tls13-st/extension-type-signature-algorithms)]
+    (unpack-extension-signature-algorithms context extension)
+    (throw (ex-info "no signature algorithms" {:reason ::no-signature-algorithms}))))
 
 (defn unpack-client-extension-key-share
   "Unpack key share extension."
@@ -726,7 +761,7 @@
   "Pack signature algorithms extension."
   [{:keys [signature-algorithms] :as context}]
   (pack-extension
-   context :server-certificate-reuqest-extensions
+   context :server-certificate-request-extensions
    tls13-st/extension-type-signature-algorithms
    (st/pack tls13-st/st-extension-signature-algorithms signature-algorithms)))
 
@@ -768,6 +803,7 @@
                 :legacy-session-id legacy-session-id})
               init-random
               unpack-client-extension-supported-versions
+              unpack-client-extension-signature-algorithms
               unpack-client-extension-key-share
               unpack-client-extension-server-name
               unpack-client-extension-application-layer-protocol-negotiation
