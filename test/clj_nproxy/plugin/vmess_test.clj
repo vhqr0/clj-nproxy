@@ -5,8 +5,6 @@
             [clj-nproxy.proxy :as proxy]
             clj-nproxy.plugin.vmess))
 
-(set! clojure.core/*warn-on-reflection* true)
-
 (defn sim-vmess
   [opts]
   (let [uuid (str (random-uuid))]
