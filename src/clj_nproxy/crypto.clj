@@ -1,8 +1,8 @@
 (ns clj-nproxy.crypto
   "Java crypto wrapper."
   (:require [clj-nproxy.bytes :as b])
-  (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator]
-           [java.security.spec AlgorithmParameterSpec ECGenParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
+  (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator AlgorithmParameters]
+           [java.security.spec AlgorithmParameterSpec ECParameterSpec ECGenParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
            [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
 
@@ -195,6 +195,30 @@
 
 ;;;; ecc
 
+(defn named-params->ec-params
+  "Convert named params to ec params."
+  ^ECParameterSpec [^ECGenParameterSpec named-params]
+  (let [params (doto (AlgorithmParameters/getInstance "EC")
+                 (.init named-params))]
+    (.getParameterSpec params ECParameterSpec)))
+
+(defn ec-params->named-params
+  "Convert ec params to named parmas."
+  ^ECGenParameterSpec [^ECParameterSpec ec-params]
+  (let [params (doto (AlgorithmParameters/getInstance "EC")
+                 (.init ec-params))]
+    (.getParameterSpec params ECGenParameterSpec)))
+
+(defn name->ec-params
+  "Convert name to ec params."
+  ^ECParameterSpec [^String name]
+  (named-params->ec-params (ECGenParameterSpec. name)))
+
+(defn ec-params->name
+  "Convert ec params to name."
+  ^String [^ECParameterSpec ec-params]
+  (.getName (ec-params->named-params ec-params)))
+
 (defn ec-gen-params
   "Make ec generation params."
   ^AlgorithmParameterSpec [^String name]
@@ -254,9 +278,9 @@
   ^AlgorithmParameterSpec [key-size]
   (RSAKeyGenParameterSpec. key-size RSAKeyGenParameterSpec/F4))
 
-(def rsa-sha256-gen (fn [] (kp-gen "RSA" (rsa-gen-params 2048))))
-(def rsa-sha384-gen (fn [] (kp-gen "RSA" (rsa-gen-params 3072))))
-(def rsa-sha512-gen (fn [] (kp-gen "RSA" (rsa-gen-params 4096))))
+(def rsa-2048-gen (fn [] (kp-gen "RSA" (rsa-gen-params 2048))))
+(def rsa-3072-gen (fn [] (kp-gen "RSA" (rsa-gen-params 3072))))
+(def rsa-4096-gen (fn [] (kp-gen "RSA" (rsa-gen-params 4096))))
 
 (def rsa-pkcs1-sha256-sign (partial sign "SHA256withRSA"))
 (def rsa-pkcs1-sha384-sign (partial sign "SHA384withRSA"))
@@ -282,6 +306,6 @@
 
 ^:rct/test
 (comment
-  (sim-sign-verify rsa-sha256-gen rsa-pkcs1-sha256-sign rsa-pkcs1-sha256-verify (b/rand 16)) ; => true
-  (sim-sign-verify rsa-sha256-gen rsa-pss-rsae-sha256-sign rsa-pss-rsae-sha256-verify (b/rand 16)) ; => true
+  (sim-sign-verify rsa-2048-gen rsa-pkcs1-sha256-sign rsa-pkcs1-sha256-verify (b/rand 16)) ; => true
+  (sim-sign-verify rsa-2048-gen rsa-pss-rsae-sha256-sign rsa-pss-rsae-sha256-verify (b/rand 16)) ; => true
   )

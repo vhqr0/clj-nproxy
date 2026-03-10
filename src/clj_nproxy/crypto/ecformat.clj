@@ -2,8 +2,8 @@
   "Raw ec key format."
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.crypto :as crypto])
-  (:import [java.security KeyFactory AlgorithmParameters]
-           [java.security.spec ECPoint ECParameterSpec ECGenParameterSpec ECPublicKeySpec XECPublicKeySpec NamedParameterSpec]
+  (:import [java.security KeyFactory]
+           [java.security.spec ECPoint ECPublicKeySpec XECPublicKeySpec NamedParameterSpec]
            [java.security.interfaces ECPublicKey XECPublicKey]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -18,13 +18,6 @@
         y (-> (.toByteArray (.getAffineY w)) (b/right-align len))]
     (b/cat (byte-array [4]) x y)))
 
-(defn ec-params
-  "Make ec params."
-  ^ECParameterSpec [^String name]
-  (let [params (doto (AlgorithmParameters/getInstance "EC")
-                 (.init (ECGenParameterSpec. name)))]
-    (.getParameterSpec params ECParameterSpec)))
-
 (defn bytes->ec-pub
   "Convert bytes to ec public key."
   ^ECPublicKey [^String name ^long len ^bytes b]
@@ -32,7 +25,7 @@
     (let [x (b/copy-of-range b 1 (inc len))
           y (b/copy-of-range b (inc len) (inc (* 2 len)))
           w (ECPoint. (BigInteger. 1 (bytes x)) (BigInteger. 1 (bytes y)))
-          spec (ECPublicKeySpec. w (ec-params name))]
+          spec (ECPublicKeySpec. w (crypto/name->ec-params name))]
       (-> (KeyFactory/getInstance "EC")
           (.generatePublic spec)))
     (throw (ex-info "invalid length" {:reason ::invalid-length}))))
