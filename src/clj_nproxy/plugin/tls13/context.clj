@@ -321,7 +321,7 @@
       context
       (if (seq certificate-chain)
         (if (<= (count certificate-chain) max-certificate-path)
-          (if (tls13-crypto/valid-cert-chain? certificate-chain)
+          (if (tls13-crypto/verify-cert-chain certificate-chain)
             (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
               context
               (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate-list})))

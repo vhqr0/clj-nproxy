@@ -8,7 +8,7 @@
   (:import [java.security PrivateKey PublicKey]
            [java.security.spec NamedParameterSpec ECParameterSpec]
            [java.security.interfaces ECPublicKey EdECPublicKey RSAPublicKey]
-           [java.security.cert X509Certificate]))
+           [java.security.cert Certificate]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -404,23 +404,21 @@
 
 ;;; certificate
 
-(def cert-algorithm-names
-  #{"Ed25519" "Ed448" "SHA256withECDSA" "SHA384withECDSA" "SHA512withECDSA"
-    "SHA256withRSA" "SHA384withRSA" "SHA512withRSA" "RSASSA-PSS"})
-
 (defn cert->pub
   "Get certificate public key."
-  ^PublicKey [^X509Certificate cert]
+  ^PublicKey [^Certificate cert]
   (.getPublicKey cert))
 
-(defn valid-cert-chain?
-  "Simple cert chain validation."
+(defn verify-cert
+  "Verify crtificate."
+  ^Boolean [^Certificate cert ^PublicKey pub]
+  (.verify cert pub))
+
+(defn verify-cert-chain
+  "Verify certificate chain."
   ^Boolean [certs]
   (->> certs
        (partition 2 1)
        (every?
-        (fn [^X509Certificate child ^X509Certificate parent]
-          (let [algorithm-name (.getSigAlgName child)]
-            (if (contains? cert-algorithm-names algorithm-name)
-              (.verify child (.getPublicKey parent))
-              (throw (ex-info "invalid certificate algorithm name" {:reason ::invalid-certificate-algorithm-name :algorithm-name algorithm-name}))))))))
+        (fn [ee ca]
+          (verify-cert ee (cert->pub ca))))))
