@@ -311,11 +311,13 @@
   [context]
   (-> context send-certificate send-certificate-verify))
 
+;; limited: only accept self-signed certificate by default
+
 (defn verify-certificate-list
   "Verify certificate list."
   [context certificate-list]
   (let [{:keys [verify-certificate-list? ca-certificate-list max-certificate-path]
-         :or {verify-certificate-list? true max-certificate-path 4}} context
+         :or {verify-certificate-list? true max-certificate-path 1}} context
         certificate-chain (->> certificate-list (map :certificate))]
     (if-not verify-certificate-list?
       context
