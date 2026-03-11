@@ -198,7 +198,7 @@
   "Inspect public key type, return keyword."
   (fn [^PublicKey pub] (.getAlgorithm pub)))
 
-(defmethod pub->type :default [_pub] :unknown)
+(defmethod pub->type :default [_pub])
 
 ;;;; ecc
 
@@ -262,9 +262,7 @@
 (defmethod pub->type "EC" [^ECPublicKey pub]
   (let [^ECParameterSpec ec-params (.getParams pub)
         ec-name (ec-params->name ec-params)]
-    (or
-     (get ec-name-map ec-name)
-     (throw (ex-info "invalid ec name" {:reason ::invalid-ec-name :ec-name ec-name})))))
+    (get ec-name-map ec-name)))
 
 ;;;;; xec
 
@@ -280,9 +278,7 @@
 (defmethod pub->type "XDH" [^XECPublicKey pub]
   (let [^NamedParameterSpec named-params (.getParams pub)
         xec-name (.getName named-params)]
-    (or
-     (get xec-name-map xec-name)
-     (throw (ex-info "invalid xec name" {:reason ::invalid-xec-name :xec-name xec-name})))))
+    (get xec-name-map xec-name)))
 
 ;;;;; ed
 
@@ -300,9 +296,7 @@
 (defmethod pub->type "EdDSA" [^EdECPublicKey pub]
   (let [^NamedParameterSpec named-params (.getParams pub)
         ed-name (.getName named-params)]
-    (or
-     (get ed-name-map ed-name)
-     (throw (ex-info "invalid ed name" {:reason ::invalid-ed-name :ed-name ed-name})))))
+    (get ed-name-map ed-name)))
 
 ;;;;; test
 
@@ -358,8 +352,7 @@
     (cond
       (>= key-size 4096) :rsa-4096
       (>= key-size 3072) :rsa-3072
-      (>= key-size 2048) :rsa-2048
-      :else (throw (ex-info "invalid rsa key size" {:reason ::invalid-rsa-key-size :rsa-key-size key-size})))))
+      (>= key-size 2048) :rsa-2048)))
 
 ^:rct/test
 (comment
