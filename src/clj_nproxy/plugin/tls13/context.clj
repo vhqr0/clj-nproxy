@@ -632,10 +632,10 @@
       (-> context
           (merge {:stage :connected})
           (verify-finished msg-data)
+          init-master-secret
           send-change-cipher-spec
           send-client-auth
-          send-finished
-          init-master-secret)
+          send-finished)
       (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
 
 ;;; server
@@ -818,7 +818,8 @@
               init-handshake-secret
               send-server-encrypted-extensions
               send-server-auth
-              send-finished)
+              send-finished
+              init-master-secret)
           (throw (ex-info "invalid cipher suites" {:reason ::invalid-cipher-suites :cipher-suites cipher-suites}))))
       (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
 
@@ -848,8 +849,7 @@
       tls13-st/handshake-type-finished
       (-> context
           (merge {:stage :connected})
-          (verify-finished msg-data)
-          init-master-secret)
+          (verify-finished msg-data))
       (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
 
 ;;; connection
