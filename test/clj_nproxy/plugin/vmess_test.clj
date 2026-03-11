@@ -18,7 +18,7 @@
           (st/flush os)
           (st/read-bytes is 4)
           (st/close os)
-          (st/read-all is))))
+          (st/read-eof is))))
      (fn [client]
        (proxy/mk-server
         (proxy/edn->server-opts {:type :vmess :uuid uuid})
@@ -28,7 +28,7 @@
             (st/write os b)
             (st/flush os)
             (st/close os)
-            (st/read-all is))))))))
+            (st/read-eof is))))))))
 
 (deftest vmess-test
   (is (some? (sim-vmess {})))

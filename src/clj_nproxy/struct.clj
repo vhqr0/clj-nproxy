@@ -13,6 +13,12 @@
   ^bytes [^InputStream is]
   (.readAllBytes is))
 
+(defn read-eof
+  "Read eof."
+  [^InputStream is]
+  (when-not (= -1 (.read is))
+    (throw (ex-info "data surplus" {:reason ::data-surplus}))))
+
 (defn write
   "Write bytes to stream."
   [^OutputStream os ^bytes b]

@@ -14,7 +14,7 @@
                     {:type :http} server "example.com" 80
                     (fn [{is :input-stream os :output-stream}]
                       (st/close os)
-                      (st/read-all is))))))
+                      (st/read-eof is))))))
               (fn [client]
                 (ws/mk-server
                  client nil
@@ -23,4 +23,4 @@
                     {:type :http} client
                     (fn [{is :input-stream os :output-stream}]
                       (st/close os)
-                      (st/read-all is))))))))))
+                      (st/read-eof is))))))))))
