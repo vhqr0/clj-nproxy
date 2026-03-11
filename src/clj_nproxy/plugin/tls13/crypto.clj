@@ -417,7 +417,7 @@
   ^bytes [cipher-suite ^bytes master-secret msgs]
   (derive-secret cipher-suite master-secret tls13-st/label-client-application msgs))
 
-;; client hello ... server finished / client certificate verify
+;; client hello ... server finished
 (defn server-application-secret
   "Expand server application secret."
   ^bytes [cipher-suite ^bytes master-secret msgs]
