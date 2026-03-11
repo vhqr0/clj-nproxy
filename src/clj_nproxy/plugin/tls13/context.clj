@@ -813,9 +813,9 @@
               pack-server-encrypted-extension-server-name
               pack-server-encrypted-extension-application-layer-protocol-negotiation
               send-server-hello
-              send-change-cipher-spec
               init-early-secret
               init-handshake-secret
+              send-change-cipher-spec
               send-server-encrypted-extensions
               send-server-auth
               send-finished
