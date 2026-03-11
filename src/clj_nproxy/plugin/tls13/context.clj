@@ -289,11 +289,10 @@
   "Send certificate verify."
   [context]
   (let [{:keys [mode cipher-suite handshake-msgs]} context
-        [certificate-list-key private-key signature-algorithm-key]
+        [private-key signature-algorithm-key]
         (case mode
-          :client [:client-certificate-list :client-private-key :client-signature-algorithm]
-          :server [:server-certificate-list :server-private-key :server-signature-algorithm])
-        certificate (-> context (get certificate-list-key) first :certificate)
+          :client [:client-private-key :client-signature-algorithm]
+          :server [:server-private-key :server-signature-algorithm])
         private-key (get context private-key)
         signature-algorithm (get context signature-algorithm-key)
         signature-data (tls13-st/pack-signature-data

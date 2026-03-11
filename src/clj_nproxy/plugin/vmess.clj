@@ -303,7 +303,7 @@
   [is id]
   (let [{:keys [cmd-key auth-key]} id
         eaid (st/read-bytes is 16)
-        ts+nonce+crc32 (-> (aesecb-decrypt auth-key eaid) valid-crc32 valid-ts)
+        _ts+nonce+crc32 (-> (aesecb-decrypt auth-key eaid) valid-crc32 valid-ts)
         elen (st/read-bytes is 18)
         nonce (st/read-bytes is 8)
         len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
@@ -477,7 +477,7 @@
         pre-write-fn #(st/write os (->eresp params))]
     (with-open [is (wrap-input-stream is params key iv)
                 os (wrap-output-stream os params rkey riv pre-write-fn)]
-      (callback {:input-stream is :output-stream os}))))
+      (callback {:input-stream is :output-stream os :host host :port port}))))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))

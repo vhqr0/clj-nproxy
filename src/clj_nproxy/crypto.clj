@@ -2,7 +2,7 @@
   "Java crypto wrapper."
   (:require [clj-nproxy.bytes :as b])
   (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator AlgorithmParameters]
-           [java.security.spec AlgorithmParameterSpec NamedParameterSpec ECGenParameterSpec ECParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
+           [java.security.spec AlgorithmParameterSpec ECGenParameterSpec ECParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
            [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
 
@@ -142,7 +142,7 @@
    (let [kpg (KeyPairGenerator/getInstance algo)]
      (when (some? params)
        (.initialize kpg params))
-     (let [kp (.generateKeyPair kpg)]
+     (let [^KeyPair kp (.generateKeyPair kpg)]
        [(.getPrivate kp) (.getPublic kp)]))))
 
 (defn sign

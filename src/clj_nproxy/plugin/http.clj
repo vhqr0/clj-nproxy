@@ -153,9 +153,9 @@
 
 (defmethod proxy/mk-server :http [{:keys [headers]} client callback]
   (let [{is :input-stream os :output-stream} client
-        {:keys [path] :as req} (-> (st/read-struct st-http-req is) valid-version (valid-method "connect"))]
-    (let [[host port] (unpack-hostport path)
-          headers (merge {"connection" "close"} headers)]
-      (st/write-struct st-http-resp os {:headers headers})
-      (st/flush os)
-      (callback {:http-req req :input-stream is :output-stream os :host host :port port}))))
+        {:keys [path] :as req} (-> (st/read-struct st-http-req is) valid-version (valid-method "connect"))
+        [host port] (unpack-hostport path)
+        headers (merge {"connection" "close"} headers)]
+    (st/write-struct st-http-resp os {:headers headers})
+    (st/flush os)
+    (callback {:http-req req :input-stream is :output-stream os :host host :port port})))

@@ -122,7 +122,7 @@
                 (fn [client]
                   (tls13/mk-server
                    client {:key-store key-store}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{is :input-stream os :output-stream}]
                      (let [data (st/read-bytes is 64)]
                        (st/write os data)
                        (st/flush os)
