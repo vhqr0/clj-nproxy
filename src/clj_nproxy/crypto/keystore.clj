@@ -15,6 +15,25 @@
     (lazy-seq
      (cons (.next iter) (iter->seq iter)))))
 
+(defn cert->pub
+  "Get certificate public key."
+  ^PublicKey [^Certificate cert]
+  (.getPublicKey cert))
+
+(defn verify-cert
+  "Verify crtificate."
+  [^Certificate cert ^PublicKey pub]
+  (.verify cert pub))
+
+(defn verify-cert-chain
+  "Verify certificate chain."
+  [certs]
+  (->> certs
+       (partition 2 1)
+       (run!
+        (fn [[ee ca]]
+          (verify-cert ee (cert->pub ca))))))
+
 ;;; der
 
 (defn pri->bytes

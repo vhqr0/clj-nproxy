@@ -258,7 +258,7 @@
         certificate (-> context (get certificate-list-key) first :certificate)
         supported-signature-algorithms (set/intersection
                                         (set (:signature-algorithms context))
-                                        (-> certificate tls13-crypto/cert->pub tls13-crypto/pub->signature-schemes))]
+                                        (-> certificate ks/cert->pub tls13-crypto/pub->signature-schemes))]
     (if-let [signature-algorithm (->> signature-algorithms (some supported-signature-algorithms))]
       (assoc context signature-algorithm-key signature-algorithm)
       (throw (ex-info "invalid signature algorithms" {:reason ::invalid-signature-algorithms :signature-algorithms signature-algorithms})))))
@@ -312,7 +312,7 @@
       (if (<= 1 (count certificate-chain) max-certificate-path)
         (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
           (do
-            (tls13-crypto/verify-cert-chain certificate-chain)
+            (ks/verify-cert-chain certificate-chain)
             context)
           (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate})))
         (throw (ex-info "invalid certificate path" {:reason ::invalid-certificate-path}))))))
@@ -358,7 +358,7 @@
             {:keys [algorithm signature]} (st/unpack tls13-st/st-handshake-certificate-verify msg-data)]
         (if (contains? (set signature-algorithms) algorithm)
           (let [signature-data (tls13-st/pack-signature-data signature-context-string (apply tls13-crypto/digest cipher-suite (butlast handshake-msgs)))]
-            (if (tls13-crypto/verify algorithm (tls13-crypto/cert->pub certificate) signature-data signature)
+            (if (tls13-crypto/verify algorithm (ks/cert->pub certificate) signature-data signature)
               (assoc context signature-algorithm-key algorithm)
               (throw (ex-info "invalid signature" {:reason ::invalid-signature}))))
           (throw (ex-info "invalid signature algorithm" {:reason ::invalid-signature-algorithm :signature-algorithm algorithm}))))

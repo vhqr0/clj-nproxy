@@ -5,8 +5,7 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.crypto.ecformat :as ecformat]
             [clj-nproxy.plugin.tls13.struct :as tls13-st])
-  (:import [java.security PrivateKey PublicKey]
-           [java.security.cert Certificate]))
+  (:import [java.security PrivateKey PublicKey]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -280,8 +279,6 @@
   (let [{:keys [verify-fn]} (get-signature-scheme signature-scheme)]
     (verify-fn pub data sig)))
 
-;;; certificate
-
 (def rsa-signature-schemes
   #{tls13-st/signature-scheme-rsa-pss-rsae-sha256
     tls13-st/signature-scheme-rsa-pss-rsae-sha384
@@ -306,25 +303,6 @@
   (let [type (crypto/pub->type pub)]
     (or (get pub-signature-schemes-map type)
         (throw (ex-info "invalid public key type" {:reason ::invalid-public-key-type :public-key-type type})))))
-
-(defn cert->pub
-  "Get certificate public key."
-  ^PublicKey [^Certificate cert]
-  (.getPublicKey cert))
-
-(defn verify-cert
-  "Verify crtificate."
-  [^Certificate cert ^PublicKey pub]
-  (.verify cert pub))
-
-(defn verify-cert-chain
-  "Verify certificate chain."
-  [certs]
-  (->> certs
-       (partition 2 1)
-       (run!
-        (fn [[ee ca]]
-          (verify-cert ee (cert->pub ca))))))
 
 ;;; key schedule
 
