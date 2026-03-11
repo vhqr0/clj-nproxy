@@ -420,5 +420,5 @@
   (->> certs
        (partition 2 1)
        (every?
-        (fn [ee ca]
+        (fn [[ee ca]]
           (verify-cert ee (cert->pub ca))))))

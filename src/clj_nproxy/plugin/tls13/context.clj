@@ -482,7 +482,7 @@
      (st/pack tls13-st/st-handshake-client-hello
               {:legacy-version tls13-st/version-tls12
                :random client-random
-               :legacy-session-id (byte-array 0)
+               :legacy-session-id (b/rand 32)
                :cipher-suites cipher-suites
                :legacy-compression-methods [tls13-st/compression-method-null]
                :extensions client-extensions}))))

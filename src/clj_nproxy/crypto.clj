@@ -294,8 +294,8 @@
   ^AlgorithmParameterSpec [algo]
   (case algo
     :sha256 (PSSParameterSpec. "SHA-256" "MGF1" MGF1ParameterSpec/SHA256 32 1)
-    :sha384 (PSSParameterSpec. "SHA-384" "MGF1" MGF1ParameterSpec/SHA384 32 1)
-    :sha512 (PSSParameterSpec. "SHA-512" "MGF1" MGF1ParameterSpec/SHA512 32 1)))
+    :sha384 (PSSParameterSpec. "SHA-384" "MGF1" MGF1ParameterSpec/SHA384 48 1)
+    :sha512 (PSSParameterSpec. "SHA-512" "MGF1" MGF1ParameterSpec/SHA512 64 1)))
 
 (def rsa-pss-rsae-sha256-sign (fn [pri data] (sign "RSASSA-PSS" (pss-params :sha256) pri data)))
 (def rsa-pss-rsae-sha384-sign (fn [pri data] (sign "RSASSA-PSS" (pss-params :sha384) pri data)))
