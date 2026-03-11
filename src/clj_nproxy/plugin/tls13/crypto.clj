@@ -356,15 +356,15 @@
 
 (defn verify-cert
   "Verify crtificate."
-  ^Boolean [^Certificate cert ^PublicKey pub]
+  [^Certificate cert ^PublicKey pub]
   (.verify cert pub))
 
 (defn verify-cert-chain
   "Verify certificate chain."
-  ^Boolean [certs]
+  [certs]
   (->> certs
        (partition 2 1)
-       (every?
+       (run!
         (fn [[ee ca]]
           (verify-cert ee (cert->pub ca))))))
 

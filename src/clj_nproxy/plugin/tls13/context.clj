@@ -309,15 +309,13 @@
         certificate-chain (->> certificate-list (map :certificate))]
     (if-not verify-certificate-list?
       context
-      (if (seq certificate-chain)
-        (if (<= (count certificate-chain) max-certificate-path)
-          (if (tls13-crypto/verify-cert-chain certificate-chain)
-            (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
-              context
-              (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate-list})))
-            (throw (ex-info "invalid certificate chain" {:reason ::invalid-certificate-chain})))
-          (throw (ex-info "invalid certificate path" {:reason ::invalid-certificate-path})))
-        (throw (ex-info "empty certificate chain" {:reason ::empty-certificate-chain}))))))
+      (if (<= 1 (count certificate-chain) max-certificate-path)
+        (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
+          (do
+            (tls13-crypto/verify-cert-chain certificate-chain)
+            context)
+          (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate})))
+        (throw (ex-info "invalid certificate path" {:reason ::invalid-certificate-path}))))))
 
 (defn recv-certificate-plaintext
   "Recv certificate plaintext."
