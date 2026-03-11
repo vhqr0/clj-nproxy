@@ -404,6 +404,20 @@
   ^bytes [cipher-suite ^bytes handshake-secret msgs]
   (derive-secret cipher-suite handshake-secret tls13-st/label-server-handshake msgs))
 
+(defn handshake-verify-key
+  "Expand handshake verify key."
+  ^bytes [cipher-suite ^bytes handshake-secret]
+  (let [digest-size (digest-size cipher-suite)]
+    (hkdf-expand-label cipher-suite handshake-secret tls13-st/label-finished (byte-array 0) digest-size)))
+
+;; client: client hello ... server finished / client certificate verify
+;; server: client hello ... server certificate verify
+(defn handshake-verify
+  "Verify handshake."
+  ^bytes [cipher-suite ^bytes handshake-secret msgs]
+  (let [key (handshake-verify-key cipher-suite handshake-secret)]
+    (hmac cipher-suite key (apply digest cipher-suite msgs))))
+
 (defn master-secret
   "Derive master secret."
   ^bytes [cipher-suite ^bytes handshake-secret]
