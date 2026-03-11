@@ -198,8 +198,7 @@
   "Inspect public key type, return keyword."
   (fn [^PublicKey pub] (.getAlgorithm pub)))
 
-(defmethod pub->type :default [^PublicKey pub]
-  (throw (ex-info "invalid public key algorithm" {:reason ::invalid-public-key-algorithm :algorithm (.getAlgorithm pub)})))
+(defmethod pub->type :default [_pub] :unknown)
 
 ;;;; ecc
 
