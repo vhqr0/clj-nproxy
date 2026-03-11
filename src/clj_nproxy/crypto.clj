@@ -2,7 +2,8 @@
   "Java crypto wrapper."
   (:require [clj-nproxy.bytes :as b])
   (:import [java.security MessageDigest Signature PublicKey PrivateKey KeyPair KeyPairGenerator AlgorithmParameters]
-           [java.security.spec AlgorithmParameterSpec ECGenParameterSpec ECParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
+           [java.security.spec AlgorithmParameterSpec NamedParameterSpec ECGenParameterSpec ECParameterSpec RSAKeyGenParameterSpec PSSParameterSpec MGF1ParameterSpec]
+           [java.security.interfaces ECPublicKey XECPublicKey EdECPublicKey RSAPublicKey]
            [javax.crypto Mac KDF Cipher KeyAgreement]
            [javax.crypto.spec SecretKeySpec HKDFParameterSpec IvParameterSpec GCMParameterSpec]))
 
@@ -193,7 +194,16 @@
             (agreement-fn pri1 pub2)
             (agreement-fn pri2 pub1)))))
 
+(defmulti pub->type
+  "Inspect public key type, return keyword."
+  (fn [^PublicKey pub] (.getAlgorithm pub)))
+
+(defmethod pub->type :default [^PublicKey pub]
+  (throw (ex-info "invalid public key algorithm" {:reason ::invalid-public-key-algorithm :algorithm (.getAlgorithm pub)})))
+
 ;;;; ecc
+
+;;;;; ec
 
 (defn named-params->ec-params
   "Convert named params to ec params."
@@ -245,10 +255,37 @@
 (def secp384r1-sha384-verify ec-sha384-verify)
 (def secp521r1-sha512-verify ec-sha512-verify)
 
+(def ec-name-map
+  {"secp256r1" :secp256r1
+   "secp384r1" :secp384r1
+   "secp521r1" :secp521r1})
+
+(defmethod pub->type "EC" [^ECPublicKey pub]
+  (let [^ECParameterSpec ec-params (.getParams pub)
+        ec-name (ec-params->name ec-params)]
+    (or
+     (get ec-name-map ec-name)
+     (throw (ex-info "invalid ec name" {:reason ::invalid-ec-name :ec-name ec-name})))))
+
+;;;;; xec
+
 (def x25519-gen (partial kp-gen "X25519"))
 (def x448-gen (partial kp-gen "X448"))
 (def x25519-agreement (partial agreement "X25519"))
 (def x448-agreement (partial agreement "X448"))
+
+(def xec-name-map
+  {"X25519" :x25519
+   "X448"   :x448})
+
+(defmethod pub->type "XDH" [^XECPublicKey pub]
+  (let [^NamedParameterSpec named-params (.getParams pub)
+        xec-name (.getName named-params)]
+    (or
+     (get xec-name-map xec-name)
+     (throw (ex-info "invalid xec name" {:reason ::invalid-xec-name :xec-name xec-name})))))
+
+;;;;; ed
 
 (def ed25519-gen (partial kp-gen "Ed25519"))
 (def ed448-gen (partial kp-gen "Ed448"))
@@ -256,6 +293,19 @@
 (def ed448-sign (partial sign "Ed448"))
 (def ed25519-verify (partial verify "Ed25519"))
 (def ed448-verify (partial verify "Ed448"))
+
+(def ed-name-map
+  {"Ed25519" :ed25519
+   "Ed448"   :ed448})
+
+(defmethod pub->type "EdDSA" [^EdECPublicKey pub]
+  (let [^NamedParameterSpec named-params (.getParams pub)
+        ed-name (.getName named-params)]
+    (or
+     (get ed-name-map ed-name)
+     (throw (ex-info "invalid ed name" {:reason ::invalid-ed-name :ed-name ed-name})))))
+
+;;;;; test
 
 ^:rct/test
 (comment
@@ -303,6 +353,14 @@
 (def rsa-pss-rsae-sha256-verify (fn [pub data sig] (verify "RSASSA-PSS" (pss-params :sha256) pub data sig)))
 (def rsa-pss-rsae-sha384-verify (fn [pub data sig] (verify "RSASSA-PSS" (pss-params :sha384) pub data sig)))
 (def rsa-pss-rsae-sha512-verify (fn [pub data sig] (verify "RSASSA-PSS" (pss-params :sha512) pub data sig)))
+
+(defmethod pub->type "RSA" [^RSAPublicKey pub]
+  (let [key-size (.bitLength (.getModulus pub))]
+    (cond
+      (>= key-size 4096) :rsa-4096
+      (>= key-size 3072) :rsa-3072
+      (>= key-size 2048) :rsa-2048
+      :else (throw (ex-info "invalid rsa key size" {:reason ::invalid-rsa-key-size :rsa-key-size key-size})))))
 
 ^:rct/test
 (comment

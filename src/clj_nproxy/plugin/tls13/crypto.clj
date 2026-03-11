@@ -6,8 +6,6 @@
             [clj-nproxy.crypto.ecformat :as ecformat]
             [clj-nproxy.plugin.tls13.struct :as tls13-st])
   (:import [java.security PrivateKey PublicKey]
-           [java.security.spec NamedParameterSpec ECParameterSpec]
-           [java.security.interfaces ECPublicKey EdECPublicKey RSAPublicKey]
            [java.security.cert Certificate]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -282,45 +280,7 @@
   (let [{:keys [verify-fn]} (get-signature-scheme signature-scheme)]
     (verify-fn pub data sig)))
 
-;;; public key
-
-(defmulti pub->type
-  "Get public key type."
-  (fn [^PublicKey pub] (.getAlgorithm pub)))
-
-(defmethod pub->type :default [^PublicKey pub]
-  (throw (ex-info "invalid public key algorithm" {:reason ::invalid-public-key-algorithm :algorithm (.getAlgorithm pub)})))
-
-(def ec-name-map
-  {"secp256r1" :secp256r1
-   "secp384r1" :secp384r1
-   "secp521r1" :secp521r1})
-
-(defmethod pub->type "EC" [^ECPublicKey pub]
-  (let [^ECParameterSpec ec-params (.getParams pub)
-        ec-name (crypto/ec-params->name ec-params)]
-    (or
-     (get ec-name-map ec-name)
-     (throw (ex-info "invalid ec name" {:reason ::invalid-ec-name :ec-name ec-name})))))
-
-(def ed-name-map
-  {"Ed25519" :ed25519
-   "Ed448"   :ed448})
-
-(defmethod pub->type "EdDSA" [^EdECPublicKey pub]
-  (let [^NamedParameterSpec named-params (.getParams pub)
-        ed-name (.getName named-params)]
-    (or
-     (get ed-name-map ed-name)
-     (throw (ex-info "invalid ed name" {:reason ::invalid-ed-name :ed-name ed-name})))))
-
-(defmethod pub->type "RSA" [^RSAPublicKey pub]
-  (let [key-size (.bitLength (.getModulus pub))]
-    (cond
-      (>= key-size 4096) :rsa-4096
-      (>= key-size 3072) :rsa-3072
-      (>= key-size 2048) :rsa-2048
-      :else (throw (ex-info "invalid rsa key size" {:reason ::invalid-rsa-key-size :rsa-key-size key-size})))))
+;;; certificate
 
 (def rsa-signature-schemes
   #{tls13-st/signature-scheme-rsa-pss-rsae-sha256
@@ -343,11 +303,9 @@
 (defn pub->signature-schemes
   "Convert public key to signature schemes."
   [^PublicKey pub]
-  (let [type (pub->type pub)]
+  (let [type (crypto/pub->type pub)]
     (or (get pub-signature-schemes-map type)
         (throw (ex-info "invalid public key type" {:reason ::invalid-public-key-type :public-key-type type})))))
-
-;;; certificate
 
 (defn cert->pub
   "Get certificate public key."
