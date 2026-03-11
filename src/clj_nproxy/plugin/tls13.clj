@@ -8,6 +8,8 @@
 
 (set! clojure.core/*warn-on-reflection* true)
 
+(def vec-drop (comp vec drop))
+
 (defn handshake
   "Do handshake on stream, return new context."
   [{is :input-stream os :output-stream} context]
@@ -30,7 +32,7 @@
                   (let [{:keys [recv-bytes read-close?]} @acontext]
                     (if (seq recv-bytes)
                       (do
-                        (swap! acontext update :recv-bytes #(vec (drop (count recv-bytes) %)))
+                        (swap! acontext update :recv-bytes (partial vec-drop (count recv-bytes)))
                         (let [b (apply b/cat recv-bytes)]
                           (if-not (zero? (b/length b))
                             b
@@ -51,14 +53,14 @@
                      (swap! acontext tls13-ctx/send-data b)
                      (let [{:keys [send-bytes]} @acontext]
                        (when (seq send-bytes)
-                         (swap! acontext update :send-bytes #(vec (drop (count send-bytes) %)))
+                         (swap! acontext update :send-bytes (partial vec-drop (count send-bytes)))
                          (run! (partial st/write os) send-bytes)
                          (st/flush os)))))
         close-fn (fn []
                    (swap! acontext tls13-ctx/send-close-notify)
                    (let [{:keys [send-bytes]} @acontext]
                      (when (seq send-bytes)
-                       (swap! acontext update :send-bytes #(vec (drop (count send-bytes) %)))
+                       (swap! acontext update :send-bytes (partial vec-drop (count send-bytes)))
                        (run! (partial st/write os) send-bytes)
                        (st/flush os))
                      (st/close os)))]
