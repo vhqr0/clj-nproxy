@@ -303,12 +303,12 @@
 
 (defn verify-certificate-list
   "Verify certificate list."
-  [context certificate-list]
-  (let [{:keys [verify-certificate-list? ca-certificate-list max-certificate-path]
-         :or {verify-certificate-list? true max-certificate-path 1}} context
-        certificate-chain (->> certificate-list (map :certificate))]
-    (if-not verify-certificate-list?
-      context
+  [context]
+  (if-not (get context :verify-certificate-list? true)
+    context
+    (let [{:keys [mode ca-certificate-list max-certificate-path] :or {max-certificate-path 1}} context
+          certificate-list-key (case mode :client :server-certificate-list :server :client-certificate-list)
+          certificate-chain (->> (get context certificate-list-key) (map :certificate))]
       (if (<= 1 (count certificate-chain) max-certificate-path)
         (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
           (do
@@ -334,8 +334,8 @@
                                   {:certificate (ks/bytes->cert cert-data)
                                    :extensions extensions})))]
      (-> context
-         (verify-certificate-list certificate-list)
-         (assoc certificate-list-key certificate-list)))))
+         (assoc certificate-list-key certificate-list)
+         verify-certificate-list))))
 
 (defn recv-certificate
   "Recv certificate."
