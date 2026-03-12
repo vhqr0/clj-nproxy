@@ -203,12 +203,6 @@
         (recv-change-cipher-spec content))
     (throw (ex-info "invalid content type" {:reason ::invalid-content-type :content-type type}))))
 
-(defn init-random
-  "Init random."
-  [{:keys [mode] :as context}]
-  (let [random-key (case mode :client :client-random :server :server-random)]
-    (assoc context random-key (b/rand 32))))
-
 (defn init-early-secret
   "Init early secret."
   [{:keys [cipher-suite] :as context}]
@@ -254,14 +248,15 @@
         [certificate-list-key signature-algorithm-key]
         (case mode
           :client [:client-certificate-list :client-signature-algorithm]
-          :server [:server-certificate-list :server-signature-algorithm])
-        certificate (-> context (get certificate-list-key) first :certificate)
-        supported-signature-algorithms (set/intersection
-                                        (set (:signature-algorithms context))
-                                        (-> certificate ks/cert->pub tls13-crypto/pub->signature-schemes))]
-    (if-let [signature-algorithm (->> signature-algorithms (some supported-signature-algorithms))]
-      (assoc context signature-algorithm-key signature-algorithm)
-      (throw (ex-info "invalid signature algorithms" {:reason ::invalid-signature-algorithms :signature-algorithms signature-algorithms})))))
+          :server [:server-certificate-list :server-signature-algorithm])]
+    (if-let [certificate (-> context (get certificate-list-key) first :certificate)]
+      (let [supported-signature-algorithms (set/intersection
+                                            (set (:signature-algorithms context))
+                                            (-> certificate ks/cert->pub tls13-crypto/pub->signature-schemes))]
+        (if-let [signature-algorithm (->> signature-algorithms (some supported-signature-algorithms))]
+          (assoc context signature-algorithm-key signature-algorithm)
+          (throw (ex-info "invalid signature algorithms" {:reason ::invalid-signature-algorithms :signature-algorithms signature-algorithms}))))
+      (throw (ex-info "require auth" {:reason ::require-auth})))))
 
 (defn send-certificate
   "Send certificate."
@@ -293,11 +288,6 @@
     (send-handshake-ciphertext
      context tls13-st/handshake-type-certificate-verify
      (st/pack tls13-st/st-handshake-certificate-verify {:algorithm signature-algorithm :signature signature}))))
-
-(defn send-auth
-  "Send auth."
-  [context]
-  (-> context send-certificate send-certificate-verify))
 
 ;; limited: only accept self-signed certificate by default
 
@@ -453,13 +443,13 @@
 (defn send-client-hello
   "Send client hello."
   [context]
-  (let [{:keys [client-random cipher-suites client-extensions]} context]
+  (let [{:keys [cipher-suites client-extensions]} context]
     (send-handshake-plaintext
      context
      tls13-st/handshake-type-client-hello
      (st/pack tls13-st/st-handshake-client-hello
               {:legacy-version tls13-st/version-tls12
-               :random client-random
+               :random (b/rand 32)
                :legacy-session-id (b/rand 32)
                :cipher-suites cipher-suites
                :legacy-compression-methods [tls13-st/compression-method-null]
@@ -469,7 +459,6 @@
   "Construct initial client context."
   [opts]
   (-> (merge default-client-opts opts)
-      init-random
       init-client-key-shares
       pack-client-extension-supported-versions
       pack-client-extension-signature-algorithms
@@ -517,7 +506,6 @@
                 (merge
                  {:stage :wait-server-ccs-ee
                   :cipher-suite cipher-suite
-                  :server-random random
                   :server-extensions extensions})
                 unpack-server-extension-supported-versions
                 unpack-server-extension-key-share
@@ -594,15 +582,17 @@
 
 ;;;; server finished
 
-(defn send-client-auth
-  "Send client auth."
+(defn send-client-certificate-maybe
+  "Send certificate."
   [context]
-  (if-not (:client-auth? context)
-    context
-    (if (and (:client-certificate-list context)
-             (:client-private-key context))
-      (send-auth context)
-      (throw (ex-info "require client auth" {:reason ::require-client-auth})))))
+  (cond-> context
+    (:client-auth? context) send-certificate))
+
+(defn send-client-certificate-verify-maybe
+  "Send certificate verify."
+  [context]
+  (cond-> context
+    (:client-auth? context) send-certificate-verify))
 
 (defmethod recv-record :wait-server-finished [context type content]
   (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
@@ -613,7 +603,8 @@
           (verify-finished msg-data)
           init-master-secret
           send-change-cipher-spec
-          send-client-auth
+          send-client-certificate-maybe
+          send-client-certificate-verify-maybe
           send-finished)
       (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
 
@@ -717,13 +708,13 @@
 (defn send-server-hello
   "Send server hello."
   [context]
-  (let [{:keys [server-random cipher-suite server-extensions legacy-session-id]} context]
+  (let [{:keys [cipher-suite server-extensions legacy-session-id]} context]
     (send-handshake-plaintext
      context
      tls13-st/handshake-type-server-hello
      (st/pack tls13-st/st-handshake-server-hello
               {:legacy-version tls13-st/version-tls12
-               :random server-random
+               :random (b/rand 32)
                :legacy-session-id-echo legacy-session-id
                :cipher-suite cipher-suite
                :legacy-compression-method tls13-st/compression-method-null
@@ -737,34 +728,27 @@
      context tls13-st/handshake-type-encrypted-extensions
      (st/pack tls13-st/st-handshake-encrypted-extensions server-encrypted-extensions))))
 
-(defn pack-server-certificate-request-extension-signature-algorithms
+(defn pack-server-certificate-request-extension-signature-algorithms-maybe
   "Pack signature algorithms extension."
   [{:keys [signature-algorithms] :as context}]
-  (pack-extension
-   context :server-certificate-request-extensions
-   tls13-st/extension-type-signature-algorithms
-   (st/pack tls13-st/st-extension-signature-algorithms signature-algorithms)))
+  (cond-> context
+    (:client-auth? context)
+    (pack-extension
+     :server-certificate-request-extensions
+     tls13-st/extension-type-signature-algorithms
+     (st/pack tls13-st/st-extension-signature-algorithms signature-algorithms))))
 
-(defn send-server-certificate-request
+(defn send-server-certificate-request-maybe
   "Send certificate request."
   [context]
   (let [{:keys [server-certificate-request-extensions]} context]
-    (send-handshake-ciphertext
-     context tls13-st/handshake-type-certificate-request
-     (st/pack tls13-st/st-handshake-certificate-request
-              {:certificate-request-context (byte-array 0)
-               :extensions server-certificate-request-extensions}))))
-
-(defn send-server-auth
-  "Send server auth."
-  [context]
-  (let [{:keys [client-auth?]} context
-        context (if-not client-auth?
-                  context
-                  (-> context
-                      pack-server-certificate-request-extension-signature-algorithms
-                      send-server-certificate-request))]
-    (send-auth context)))
+    (cond-> context
+      (:client-auth? context)
+      (send-handshake-ciphertext
+       tls13-st/handshake-type-certificate-request
+       (st/pack tls13-st/st-handshake-certificate-request
+                {:certificate-request-context (byte-array 0)
+                 :extensions server-certificate-request-extensions})))))
 
 (defmethod recv-record :wait-client-hello [context type content]
   (let [[context msg-type msg-data] (recv-handshake-plaintext context type content)]
@@ -778,10 +762,8 @@
               (merge
                {:stage (if client-auth? :wait-client-ccs-cert :wait-client-ccs-finished)
                 :cipher-suite cipher-suite
-                :client-random random
                 :client-extensions extensions
                 :legacy-session-id legacy-session-id})
-              init-random
               unpack-client-extension-supported-versions
               unpack-client-extension-signature-algorithms
               unpack-client-extension-key-share
@@ -796,7 +778,10 @@
               init-handshake-secret
               send-change-cipher-spec
               send-server-encrypted-extensions
-              send-server-auth
+              pack-server-certificate-request-extension-signature-algorithms-maybe
+              send-server-certificate-request-maybe
+              send-certificate
+              send-certificate-verify
               send-finished
               init-master-secret)
           (throw (ex-info "invalid cipher suites" {:reason ::invalid-cipher-suites :cipher-suites cipher-suites}))))
