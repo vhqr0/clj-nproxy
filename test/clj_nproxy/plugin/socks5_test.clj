@@ -9,4 +9,13 @@
               (fn [server]
                 (proxy/mk-client {:type :socks5} server "example.com" 80 (fn [_])))
               (fn [client]
-                (proxy/mk-server {:type :socks5} client (fn [_])))))))
+                (proxy/mk-server {:type :socks5} client (fn [_]))))))
+  (is (some? (st/sim-conn
+              (fn [server]
+                (proxy/mk-client
+                 {:type :socks5 :auth {:username "user" :password "pwd"}}
+                 server "example.com" 80 (fn [_])))
+              (fn [client]
+                (proxy/mk-server
+                 {:type :socks5 :auth {:username "user" :password "pwd"}}
+                 client (fn [_])))))))

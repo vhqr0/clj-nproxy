@@ -45,6 +45,17 @@
    :ver st/st-ubyte
    :meth st/st-ubyte))
 
+(def st-pwd-auth-req
+  (st/keys
+   :ver st/st-ubyte
+   :username st-str
+   :password st-str))
+
+(def st-pwd-auth-resp
+  (st/keys
+   :ver st/st-ubyte
+   :status st/st-ubyte))
+
 (def st-req
   (st/keys
    :ver st/st-ubyte
@@ -64,28 +75,21 @@
   [{:keys [ver] :as socks5}]
   (if (= ver 5)
     socks5
-    (throw (ex-info "invalid ver" {:reason ::invalid-ver :ver 5}))))
+    (throw (ex-info "invalid ver" {:reason ::invalid-ver :ver ver}))))
 
-(defn valid-meths
-  "Valid auth request meth."
-  [{:keys [meths] :as auth-req}]
-  (if (contains? (set meths) 0)
-    auth-req
-    (throw (ex-info "invalid meths" {:reason ::invalid-meths :meths meths}))))
+(defn valid-pwd-auth-ver
+  "Valid auth ver."
+  [{:keys [ver] :as socks5}]
+  (if (= ver 1)
+    socks5
+    (throw (ex-info "invalid auth ver" {:reason ::invalid-pwd-auth-ver :pwd-auth-ver ver}))))
 
-(defn valid-meth
-  "Valid auth response meth."
-  [{:keys [meth] :as auth-resp}]
-  (if (= meth 0)
-    auth-resp
-    (throw (ex-info "invalid meth" {:reason ::invalid-meth :meth meth}))))
-
-(defn valid-cmd
-  "Valid request cmd."
-  [{:keys [cmd] :as req}]
-  (if (= cmd 1)
-    req
-    (throw (ex-info "invalid cmd" {:reason ::invalid-cmd :cmd cmd}))))
+(defn valid-auth
+  "Valid auth."
+  [{:keys [username password] :as socks5} auth]
+  (if (and (= username (:username auth)) (= password (:password auth)))
+    socks5
+    (throw (ex-info "invalid auth" {:reason ::invalid-auth :username username :password password}))))
 
 (defn valid-status
   "Valid response status."
@@ -94,21 +98,55 @@
     resp
     (throw (ex-info "invalid status" {:reason ::invalid-status :status status}))))
 
-(defmethod proxy/mk-client :socks5 [_opts server host port callback]
+(defn valid-cmd
+  "Valid request cmd."
+  [{:keys [cmd] :as req}]
+  (if (= cmd 1)
+    req
+    (throw (ex-info "invalid cmd" {:reason ::invalid-cmd :cmd cmd}))))
+
+(defmethod proxy/mk-client :socks5 [opts server host port callback]
   (let [{is :input-stream os :output-stream} server]
-    (st/write-struct st-auth-req os {:ver 5 :meths [0]})
-    (st/flush os)
-    (-> (st/read-struct st-auth-resp is) valid-ver valid-meth)
+    ;; auth
+    (let [{:keys [auth]} opts
+          meths (cond-> [0] (some? auth) (conj 2))]
+      (st/write-struct st-auth-req os {:ver 5 :meths meths})
+      (st/flush os)
+      (let [{:keys [meth]} (-> (st/read-struct st-auth-resp is) valid-ver)]
+        (if (contains? (set meths) meth)
+          (case (long meth)
+            0 nil
+            2 (let [{:keys [username password]} auth]
+                (st/write-struct st-pwd-auth-req os {:ver 1 :username username :password password})
+                (st/flush os)
+                (-> (st/read-struct st-pwd-auth-resp is) valid-pwd-auth-ver valid-status))
+            (throw (ex-info "invalid auth meth" {:reason ::invalid-auth-meth :auth-meth meth})))
+          (throw (ex-info "invalid auth meth" {:reason ::invalid-auth-meth :auth-meth meth})))))
+    ;; request
     (st/write-struct st-req os {:ver 5 :cmd 1 :rsv 0 :addr {:atype 3 :host host :port port}})
     (st/flush os)
     (-> (st/read-struct st-resp is) valid-ver valid-status)
     (callback {:input-stream is :output-stream os})))
 
-(defmethod proxy/mk-server :socks5 [_opts client callback]
+(defmethod proxy/mk-server :socks5 [opts client callback]
   (let [{is :input-stream os :output-stream} client]
-    (-> (st/read-struct st-auth-req is) valid-ver valid-meths)
-    (st/write-struct st-auth-resp os {:ver 5 :meth 0})
-    (st/flush os)
+    ;; auth
+    (let [{:keys [auth]} opts
+          meth (if (some? auth) 2 0)
+          {:keys [meths]} (-> (st/read-struct st-auth-req is) valid-ver)]
+      (if (contains? (set meths) meth)
+        (do
+          (st/write-struct st-auth-resp os {:ver 5 :meth meth})
+          (st/flush os)
+          (case (long meth)
+            0 nil
+            2 (do
+                (-> (st/read-struct st-pwd-auth-req is) valid-pwd-auth-ver (valid-auth auth))
+                (st/write-struct st-pwd-auth-resp os {:ver 1 :status 0})
+                (st/flush os))
+            (throw (ex-info "invalid auth meth" {:reason ::invalid-auth-meth :auth-meth meth}))))
+        (throw (ex-info "invalid auth meth" {:reason ::invalid-auth-meth :auth-meth meth}))))
+    ;; request
     (let [{:keys [addr]} (-> (st/read-struct st-req is) valid-ver valid-cmd)
           {:keys [host port]} addr]
       (st/write-struct st-resp os {:ver 5 :status 0 :rsv 0 :addr {:atype 1 :host "0.0.0.0" :port 0}})
