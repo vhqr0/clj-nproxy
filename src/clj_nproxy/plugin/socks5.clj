@@ -1,4 +1,5 @@
 (ns clj-nproxy.plugin.socks5
+  "Socks5 proxy impl."
   (:require [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy])
   (:import [java.net InetAddress]))

@@ -1,4 +1,5 @@
 (ns clj-nproxy.plugin.http
+  "HTTP proxy impl."
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]))

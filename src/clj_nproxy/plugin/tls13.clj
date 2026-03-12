@@ -1,5 +1,6 @@
 (ns clj-nproxy.plugin.tls13
-  "TLS 1.3 impl."
+  "TLS 1.3 impl.
+  https://www.rfc-editor.org/rfc/rfc8446"
   (:require [clojure.set :as set]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
@@ -8,8 +9,6 @@
             [clj-nproxy.crypto.keystore :as ks])
   (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
            [java.security PrivateKey PublicKey]))
-
-;; RFC 8446 TLS 1.3
 
 (set! clojure.core/*warn-on-reflection* true)
 
