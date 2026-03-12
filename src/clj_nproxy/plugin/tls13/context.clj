@@ -176,10 +176,11 @@
 (defn send-change-cipher-spec
   "Send change cipher spec."
   [context]
-  (send-plaintext
-   context
-   tls13-st/content-type-change-cipher-spec
-   (st/pack tls13-st/st-change-cipher-spec tls13-st/change-ciper-spec)))
+  (cond-> context
+    (get context :send-change-cipher-spec? true)
+    (send-plaintext
+     tls13-st/content-type-change-cipher-spec
+     (st/pack tls13-st/st-change-cipher-spec tls13-st/change-ciper-spec))))
 
 (defn recv-change-cipher-spec
   "Recv change cipher spec."
