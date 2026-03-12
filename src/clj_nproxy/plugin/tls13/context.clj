@@ -306,16 +306,13 @@
   [context]
   (if-not (get context :verify-certificate-list? true)
     context
-    (let [{:keys [mode ca-certificate-list max-certificate-path] :or {max-certificate-path 1}} context
+    (let [{:keys [mode ca-certificate-list]} context
           certificate-list-key (case mode :client :server-certificate-list :server :client-certificate-list)
-          certificate-chain (->> (get context certificate-list-key) (map :certificate))]
-      (if (<= 1 (count certificate-chain) max-certificate-path)
-        (if (->> ca-certificate-list (some (partial = (last certificate-chain))))
-          (do
-            (ks/verify-cert-chain certificate-chain)
-            context)
-          (throw (ex-info "invalid ca certificate" {:reason ::invalid-ca-certificate})))
-        (throw (ex-info "invalid certificate path" {:reason ::invalid-certificate-path}))))))
+          certificate-list (->> (get context certificate-list-key) (map :certificate))]
+      (if (and (= 1 (count certificate-list))
+               (->> ca-certificate-list (some (partial = (last certificate-list)))))
+        context
+        (throw (ex-info "invalid certificate list" {:reason ::invalid-certificate-list}))))))
 
 (defn recv-certificate-plaintext
   "Recv certificate plaintext."
