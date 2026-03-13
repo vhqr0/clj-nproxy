@@ -188,7 +188,7 @@
 
 ;;;;; change cipher spec
 
-(def change-ciper-spec 1)
+(def change-cipher-spec 1)
 
 (def st-change-cipher-spec st/st-ubyte)
 
@@ -1037,13 +1037,13 @@
     (get context :send-change-cipher-spec? true)
     (send-plaintext
      content-type-change-cipher-spec
-     (st/pack st-change-cipher-spec change-ciper-spec))))
+     (st/pack st-change-cipher-spec change-cipher-spec))))
 
 (defn recv-change-cipher-spec
   "Recv change cipher spec."
   [context content]
   (let [change-cipher-spec (st/unpack st-change-cipher-spec content)]
-    (if (= change-cipher-spec change-ciper-spec)
+    (if (= change-cipher-spec change-cipher-spec)
       context
       (throw (ex-info "invalid change cipher spec" {:reason ::invalid-change-cipher-spec :change-cipher-spec change-cipher-spec})))))
 
@@ -1381,7 +1381,7 @@
   "Unpack server name extension."
   [context]
   (cond-> context
-    (some? (find-extension context :server-encrypted-extensions extension-type-application-layer-protocol-negotiation))
+    (some? (find-extension context :server-encrypted-extensions extension-type-server-name))
     (merge {:accept-server-name? true})))
 
 (defn unpack-server-encrypted-extension-application-layer-protocol-negotiation
