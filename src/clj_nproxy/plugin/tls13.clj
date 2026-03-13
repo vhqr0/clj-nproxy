@@ -1389,7 +1389,7 @@
       (condp = msg-type
         handshake-type-server-hello
         (let [{:keys [cipher-suites]} context
-              {:keys [random cipher-suite extensions]} (st/unpack st-handshake-server-hello msg-data)]
+              {:keys [cipher-suite extensions]} (st/unpack st-handshake-server-hello msg-data)]
           (if (contains? (set cipher-suites) cipher-suite)
             (-> context
                 (merge
@@ -1669,7 +1669,7 @@
       handshake-type-client-hello
       (let [{:keys [client-auth?]} context
             server-cipher-suites (set (:cipher-suites context))
-            {:keys [random cipher-suites extensions legacy-session-id]} (st/unpack st-handshake-client-hello msg-data)]
+            {:keys [cipher-suites extensions legacy-session-id]} (st/unpack st-handshake-client-hello msg-data)]
         (if-let [cipher-suite (->> cipher-suites (some server-cipher-suites))]
           (-> context
               (merge
