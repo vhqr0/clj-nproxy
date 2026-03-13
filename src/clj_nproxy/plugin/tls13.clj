@@ -15,6 +15,8 @@
 (def vec-conj (fnil conj []))
 (def vec-drop (comp vec drop))
 
+(def bytes-append (fnil b/cat (byte-array 0)))
+
 (defn mask-bytes-inplace
   "Mask bytes one by one inplace."
   [^bytes b1 ^bytes b2]
@@ -284,6 +286,11 @@
 (def handshake-type-message-hash         254)
 
 (def st-handshake-type st/st-ubyte)
+
+(def st-handshake-header
+  (st/keys
+   :msg-type st-handshake-type
+   :msg-length st-uint24))
 
 (def st-handshake
   (st/keys
@@ -913,6 +920,10 @@
   "Recv record, return new context."
   (fn [context _type _content] (:stage context)))
 
+(defmulti recv-handshake
+  "Recv handshake, return new context."
+  (fn [context] (:stage context)))
+
 (defn pack-extension
   "Pack extension."
   [context extensions-key type extension]
@@ -1006,7 +1017,26 @@
      (throw (ex-info "invalid content type" {:reason ::invalid-content-type :content-type type}))))
   ([context content]
    (let [[context type content] (recv-ciphertext context :handshake-decryptor content)]
-     (recv-handshake-plaintext context type content))))
+     (condp = type
+       content-type-handshake
+       (-> context
+           (update :handshake-recv-bytes bytes-append content)
+           recv-handshake)
+       (throw (ex-info "invalid content type" {:reason ::invalid-content-type :content-type type}))))))
+
+(defn unpack-handshake-maybe
+  "Unpack handshake from recv bytes if possible,
+  return new context, msg type and msg data."
+  [context]
+  (let [{:keys [handshake-recv-bytes]} context
+        length (or (some-> handshake-recv-bytes b/length) 0)]
+    (when (>= length 4)
+      (let [{:keys [msg-length]} (st/unpack st-handshake-header (b/copy-of handshake-recv-bytes 4))
+            content-length (+ msg-length 4)]
+        (when (<= content-length length)
+          (-> context
+              (assoc :handshake-recv-bytes (b/copy-of-range handshake-recv-bytes content-length length))
+              (recv-handshake-plaintext (b/copy-of handshake-recv-bytes content-length))))))))
 
 (defn send-application-ciphertext
   "Send application ciphertext."
@@ -1161,12 +1191,12 @@
         context
         (throw (ex-info "invalid certificate list" {:reason ::invalid-certificate-list}))))))
 
-(defn recv-certificate-plaintext
-  "Recv certificate plaintext."
+(defn recv-certificate
+  "Recv certificate."
   ([context msg-type msg-data]
    (condp = msg-type
      handshake-type-certificate
-     (recv-certificate-plaintext context msg-data)
+     (recv-certificate context msg-data)
      (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type}))))
   ([context msg-data]
    (let [{:keys [mode]} context
@@ -1181,32 +1211,27 @@
          (assoc certificate-list-key certificate-list)
          verify-certificate-list))))
 
-(defn recv-certificate
-  "Recv certificate."
-  [context type content]
-  (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
-    (recv-certificate-plaintext context msg-type msg-data)))
-
 (defn recv-certificate-verify
   "Recv certificate verify."
-  [context type content]
-  (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
-    (condp = msg-type
-      handshake-type-certificate-verify
-      (let [{:keys [mode cipher-suite signature-algorithms handshake-msgs]} context
-            [certificate-list-key signature-algorithm-key signature-context-string]
-            (case mode
-              :client [:server-certificate-list :server-signature-algorithm server-signature-context-string]
-              :server [:client-certificate-list :client-signature-algorithm client-signature-context-string])
-            certificate (-> context (get certificate-list-key) first :certificate)
-            {:keys [algorithm signature]} (st/unpack st-handshake-certificate-verify msg-data)]
-        (if (contains? (set signature-algorithms) algorithm)
-          (let [signature-data (pack-signature-data signature-context-string (apply digest cipher-suite (butlast handshake-msgs)))]
-            (if (verify algorithm (ks/cert->pub certificate) signature-data signature)
-              (assoc context signature-algorithm-key algorithm)
-              (throw (ex-info "invalid signature" {:reason ::invalid-signature}))))
-          (throw (ex-info "invalid signature algorithm" {:reason ::invalid-signature-algorithm :signature-algorithm algorithm}))))
-      (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
+  ([context msg-type msg-data]
+   (condp = msg-type
+     handshake-type-certificate-verify
+     (recv-certificate-verify context msg-data)
+     (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type}))))
+  ([context msg-data]
+   (let [{:keys [mode cipher-suite signature-algorithms handshake-msgs]} context
+         [certificate-list-key signature-algorithm-key signature-context-string]
+         (case mode
+           :client [:server-certificate-list :server-signature-algorithm server-signature-context-string]
+           :server [:client-certificate-list :client-signature-algorithm client-signature-context-string])
+         certificate (-> context (get certificate-list-key) first :certificate)
+         {:keys [algorithm signature]} (st/unpack st-handshake-certificate-verify msg-data)]
+     (if (contains? (set signature-algorithms) algorithm)
+       (let [signature-data (pack-signature-data signature-context-string (apply digest cipher-suite (butlast handshake-msgs)))]
+         (if (verify algorithm (ks/cert->pub certificate) signature-data signature)
+           (assoc context signature-algorithm-key algorithm)
+           (throw (ex-info "invalid signature" {:reason ::invalid-signature}))))
+       (throw (ex-info "invalid signature algorithm" {:reason ::invalid-signature-algorithm :signature-algorithm algorithm}))))))
 
 (defn send-finished
   "Send finished."
@@ -1216,15 +1241,22 @@
         verify (handshake-verify cipher-suite (get context handshake-secret-key) handshake-msgs)]
     (send-handshake-ciphertext context handshake-type-finished verify)))
 
-(defn verify-finished
-  "Verify finished."
-  [context msg-data]
-  (let [{:keys [mode cipher-suite handshake-msgs]} context
-        handshake-secret-key (case mode :client :server-handshake-secret :server :client-handshake-secret)
-        verify (handshake-verify cipher-suite (get context handshake-secret-key) (butlast handshake-msgs))]
-    (if (zero? (b/compare msg-data verify))
-      context
-      (throw (ex-info "invalid finished" {:reason ::invalid-finished})))))
+(defn recv-finished
+  "Recv finished."
+  ([context msg-type msg-data]
+   (condp = msg-type
+     handshake-type-finished
+     (recv-finished context msg-data)
+     (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type}))))
+  ([context msg-data]
+   (let [{:keys [mode cipher-suite handshake-recv-bytes handshake-msgs]} context
+         handshake-secret-key (case mode :client :server-handshake-secret :server :client-handshake-secret)
+         verify (handshake-verify cipher-suite (get context handshake-secret-key) (butlast handshake-msgs))]
+     (if (and (zero? (b/compare msg-data verify))
+              (or (nil? handshake-recv-bytes)
+                  (zero? (b/length handshake-recv-bytes))))
+       context
+       (throw (ex-info "invalid finished" {:reason ::invalid-finished}))))))
 
 ;;;; client
 
@@ -1396,16 +1428,21 @@
         (throw (ex-info "invalid application protocols" {:reason ::invalid-applicatoin-protocols :application-protocols selected-application-protocols}))))
     context))
 
-(defmethod recv-record :wait-server-ee [context type content]
-  (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
+(defmethod recv-handshake :wait-server-ee [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
     (condp = msg-type
       handshake-type-encrypted-extensions
       (let [extensions (st/unpack st-handshake-encrypted-extensions msg-data)]
         (-> context
             (merge {:stage :wait-server-cert-cr :server-encrypted-extensions extensions})
             unpack-server-encrypted-extension-server-name
-            unpack-server-encrypted-extension-application-layer-protocol-negotiation))
-      (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
+            unpack-server-encrypted-extension-application-layer-protocol-negotiation
+            recv-handshake))
+      (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))
+    context))
+
+(defmethod recv-record :wait-server-ee [context type content]
+  (recv-handshake-ciphertext context type content))
 
 ;;;;; server certificate
 
@@ -1416,26 +1453,44 @@
     (unpack-extension-signature-algorithms context extension)
     (throw (ex-info "no signature algorithms" {:reason ::no-signature-algorithms}))))
 
-(defmethod recv-record :wait-server-cert-cr [context type content]
-  (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
+(defmethod recv-handshake :wait-server-cert-cr [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
     (if (= msg-type handshake-type-certificate-request)
       (let [{:keys [extensions]} (st/unpack st-handshake-certificate-request msg-data)]
         (-> context
             (merge {:stage :wait-server-cert :client-auth? true :server-certificate-request-extensions extensions})
-            unpack-server-certificate-request-extension-signature-algorithms))
+            unpack-server-certificate-request-extension-signature-algorithms
+            recv-handshake))
       (-> context
           (merge {:stage :wait-server-cv})
-          (recv-certificate-plaintext msg-type msg-data)))))
+          (recv-certificate msg-type msg-data)
+          recv-handshake))
+    context))
+
+(defmethod recv-record :wait-server-cert-cr [context type content]
+  (recv-handshake-ciphertext context type content))
+
+(defmethod recv-handshake :wait-server-cert [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
+    (-> context
+        (merge {:stage :wait-server-cv})
+        (recv-certificate msg-type msg-data)
+        recv-handshake)
+    context))
 
 (defmethod recv-record :wait-server-cert [context type content]
-  (-> context
-      (merge {:stage :wait-server-cv})
-      (recv-certificate type content)))
+  (recv-handshake-ciphertext context type content))
+
+(defmethod recv-handshake :wait-server-cv [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
+    (-> context
+        (merge {:stage :wait-server-finished})
+        (recv-certificate-verify msg-type msg-data)
+        recv-handshake)
+    context))
 
 (defmethod recv-record :wait-server-cv [context type content]
-  (-> context
-      (merge {:stage :wait-server-finished})
-      (recv-certificate-verify type content)))
+  (recv-handshake-ciphertext context type content))
 
 ;;;;; server finished
 
@@ -1451,19 +1506,20 @@
   (cond-> context
     (:client-auth? context) send-certificate-verify))
 
+(defmethod recv-handshake :wait-server-finished [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
+    (-> context
+        (merge {:stage :connected})
+        (recv-finished msg-type msg-data)
+        init-master-secret
+        send-change-cipher-spec
+        send-client-certificate-maybe
+        send-client-certificate-verify-maybe
+        send-finished)
+    context))
+
 (defmethod recv-record :wait-server-finished [context type content]
-  (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
-    (condp = msg-type
-      handshake-type-finished
-      (-> context
-          (merge {:stage :connected})
-          (verify-finished msg-data)
-          init-master-secret
-          send-change-cipher-spec
-          send-client-certificate-maybe
-          send-client-certificate-verify-maybe
-          send-finished)
-      (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
+  (recv-handshake-ciphertext context type content))
 
 ;;;; server
 
@@ -1649,29 +1705,42 @@
 (defmethod recv-record :wait-client-ccs-cert [context type content]
   (recv-change-cipher-spec-maybe context type content :wait-client-cert))
 
+(defmethod recv-handshake :wait-client-cert [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
+    (-> context
+        (merge {:stage :wait-client-cv})
+        (recv-certificate msg-type msg-data)
+        recv-handshake)
+    context))
+
 (defmethod recv-record :wait-client-cert [context type content]
-  (-> context
-      (merge {:stage :wait-client-cv})
-      (recv-certificate type content)))
+  (recv-handshake-ciphertext context type content))
+
+(defmethod recv-handshake :wait-client-cv [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
+    (-> context
+        (merge {:stage :wait-client-finished})
+        (recv-certificate-verify msg-type msg-data)
+        recv-handshake)
+    context))
 
 (defmethod recv-record :wait-client-cv [context type content]
-  (-> context
-      (merge {:stage :wait-client-finished})
-      (recv-certificate-verify type content)))
+  (recv-handshake-ciphertext context type content))
 
 ;;;;; client finished
 
 (defmethod recv-record :wait-client-ccs-finished [context type content]
   (recv-change-cipher-spec-maybe context type content :wait-client-finished))
 
+(defmethod recv-handshake :wait-client-finished [context]
+  (if-let [[context msg-type msg-data] (unpack-handshake-maybe context)]
+    (-> context
+        (merge {:stage :connected})
+        (recv-finished msg-type msg-data))
+    context))
+
 (defmethod recv-record :wait-client-finished [context type content]
-  (let [[context msg-type msg-data] (recv-handshake-ciphertext context type content)]
-    (condp = msg-type
-      handshake-type-finished
-      (-> context
-          (merge {:stage :connected})
-          (verify-finished msg-data))
-      (throw (ex-info "invalid handshake type" {:reason ::invalid-handshake-type :handshake-type msg-type})))))
+  (recv-handshake-ciphertext context type content))
 
 ;;;; connection
 
