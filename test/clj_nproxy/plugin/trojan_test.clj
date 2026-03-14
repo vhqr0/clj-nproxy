@@ -8,10 +8,12 @@
   (is (some? (st/sim-conn
               (fn [server]
                 (proxy/mk-client
+                 server
                  (proxy/edn->client-opts {:type :trojan :password "hello"})
-                 server "example.com" 80 (fn [_])))
+                 "example.com" 80 (fn [_])))
               (fn [client]
                 (proxy/mk-server
+                 client
                  (proxy/edn->server-opts {:type :trojan :password "hello"})
-                 client (fn [_])))))))
+                 (fn [_])))))))
 

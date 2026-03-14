@@ -106,7 +106,7 @@
     req
     (throw (ex-info "invalid cmd" {:reason ::invalid-cmd :cmd cmd}))))
 
-(defmethod proxy/mk-client :socks5 [opts server host port callback]
+(defmethod proxy/mk-client :socks5 [server opts host port callback]
   (let [{is :input-stream os :output-stream} server]
     ;; auth
     (let [{:keys [auth]} opts
@@ -129,7 +129,7 @@
     (-> (st/read-struct st-resp is) valid-ver valid-status)
     (callback {:input-stream is :output-stream os})))
 
-(defmethod proxy/mk-server :socks5 [opts client callback]
+(defmethod proxy/mk-server :socks5 [client opts callback]
   (let [{is :input-stream os :output-stream} client]
     ;; auth
     (let [{:keys [auth]} opts

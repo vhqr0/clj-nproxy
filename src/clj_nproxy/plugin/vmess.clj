@@ -462,7 +462,7 @@
     (BufferedOutputStream.
      (st/write-fn->output-stream write-fn close-fn))))
 
-(defmethod proxy/mk-client :vmess [{:keys [id] :as opts} server host port callback]
+(defmethod proxy/mk-client :vmess [server {:keys [id] :as opts} host port callback]
   (let [{is :input-stream os :output-stream} server
         {:keys [key iv rkey riv] :as params} (->params opts)
         pre-read-fn #(read-resp is params)
@@ -471,7 +471,7 @@
                 os (wrap-output-stream os params key iv pre-write-fn)]
       (callback {:input-stream is :output-stream os}))))
 
-(defmethod proxy/mk-server :vmess [{:keys [id]} client callback]
+(defmethod proxy/mk-server :vmess [client {:keys [id]} callback]
   (let [{is :input-stream os :output-stream} client
         [host port {:keys [key iv rkey riv] :as params} _eaid] (read-req is id)
         pre-write-fn #(st/write os (->eresp params))]

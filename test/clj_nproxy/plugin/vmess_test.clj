@@ -11,8 +11,9 @@
     (st/sim-conn
      (fn [server]
        (proxy/mk-client
+        server
         (proxy/edn->client-opts (merge {:type :vmess :uuid uuid} opts))
-        server "example.com" 80
+        "example.com" 80
         (fn [{is :input-stream os :output-stream}]
           (st/write os (b/rand 4))
           (st/flush os)
@@ -21,8 +22,8 @@
           (st/read-eof is))))
      (fn [client]
        (proxy/mk-server
-        (proxy/edn->server-opts {:type :vmess :uuid uuid})
         client
+        (proxy/edn->server-opts {:type :vmess :uuid uuid})
         (fn [{is :input-stream os :output-stream}]
           (let [b (st/read-bytes is 4)]
             (st/write os b)

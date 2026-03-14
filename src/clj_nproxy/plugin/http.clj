@@ -153,7 +153,7 @@
         (throw (ex-info "invalid upgrade" {:reason ::invalid-upgrade :upgrade upgrade})))
       (throw (ex-info "invalid connection" {:reason ::invalid-connection :connection connection})))))
 
-(defmethod proxy/mk-client :http [{:keys [headers]} server host port callback]
+(defmethod proxy/mk-client :http [server {:keys [headers]} host port callback]
   (let [{is :input-stream os :output-stream} server
         hostport (pack-hostport host port)
         headers (merge {"host" hostport} headers)]
@@ -164,7 +164,7 @@
 
 ;; limited: only accept connect method with explicit port
 
-(defmethod proxy/mk-server :http [{:keys [headers]} client callback]
+(defmethod proxy/mk-server :http [client {:keys [headers]} callback]
   (let [{is :input-stream os :output-stream} client
         {:keys [path] :as req} (-> (st/read-struct st-http-req is) valid-version (valid-method "connect"))
         [host port] (unpack-hostport path)

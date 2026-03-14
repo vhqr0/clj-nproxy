@@ -7,6 +7,6 @@
 (deftest http-test
   (is (some? (st/sim-conn
               (fn [server]
-                (proxy/mk-client {:type :http} server "example.com" 80 (fn [_])))
+                (proxy/mk-client server {:type :http} "example.com" 80 (fn [_])))
               (fn [client]
-                (proxy/mk-server {:type :http} client (fn [_])))))))
+                (proxy/mk-server client {:type :http} (fn [_])))))))

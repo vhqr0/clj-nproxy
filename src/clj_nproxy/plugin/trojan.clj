@@ -16,7 +16,7 @@
    :addr socks5/st-addr
    :rsv st/st-http-line))
 
-(defmethod proxy/mk-client :trojan [{:keys [auth]} server host port callback]
+(defmethod proxy/mk-client :trojan [server {:keys [auth]} host port callback]
   (let [{is :input-stream os :output-stream} server]
     (st/write-struct st-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
     (st/flush os)
@@ -43,7 +43,7 @@
     req
     (throw (ex-info "addr surplus" {:reason ::addr-surplus}))))
 
-(defmethod proxy/mk-server :trojan [{:keys [auth]} client callback]
+(defmethod proxy/mk-server :trojan [client {:keys [auth]} callback]
   (let [{is :input-stream os :output-stream} client
         {:keys [addr]} (-> (st/read-struct st-req is)
                            (valid-auth auth)
