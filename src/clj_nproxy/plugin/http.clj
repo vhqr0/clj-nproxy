@@ -141,6 +141,18 @@
     resp
     (throw (ex-info "invalid status" {:reason ::invalid-status :status resp-status}))))
 
+(defn valid-connection
+  "Valid request/response connection."
+  [{:keys [headers] :as http} protocol]
+  (let [{:strs [connection upgrade]} headers
+        connection (some-> connection str/lower-case)
+        upgrade (some-> upgrade str/lower-case)]
+    (if (= connection "upgrade")
+      (if (= upgrade protocol)
+        http
+        (throw (ex-info "invalid upgrade" {:reason ::invalid-upgrade :upgrade upgrade})))
+      (throw (ex-info "invalid connection" {:reason ::invalid-connection :connection connection})))))
+
 (defmethod proxy/mk-client :http [{:keys [headers]} server host port callback]
   (let [{is :input-stream os :output-stream} server
         hostport (pack-hostport host port)

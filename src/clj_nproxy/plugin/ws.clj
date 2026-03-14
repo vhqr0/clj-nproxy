@@ -142,45 +142,23 @@
   (key->accept (b/bytes->base64 (byte-array 16))) ; => "ICX+Yqv66kxgM0FcWaLWlFLwTAI="
   )
 
-(defn valid-connection
-  "Valid request/response connection."
-  [{:keys [headers] :as http}]
-  (let [{:strs [connection upgrade]} headers
-        connection (some-> connection str/lower-case)
-        upgrade (some-> upgrade str/lower-case)]
-    (if (= connection "upgrade")
-      (if (= upgrade "websocket")
-        http
-        (throw (ex-info "invalid upgrade" {:reason ::invalid-upgrade :upgrade upgrade})))
-      (throw (ex-info "invalid connection" {:reason ::invalid-connection :connection connection})))))
-
-(defn valid-accept
-  "Valid response accept."
-  [{:keys [headers] :as resp} key]
-  (let [accept (get headers "sec-websocket-accept")]
-    (if (= accept (key->accept key))
-      resp
-      (throw (ex-info "invalid accept" {:reason ::invalid-accept})))))
-
 (defn mk-client
   "Make websocket client."
   [server opts callback]
   (let [{is :input-stream os :output-stream} server
         {:keys [path headers] :or {path "/"}} opts
-        key (key-gen)
         headers (merge
                  headers
                  {"upgrade" "websocket"
                   "connection" "upgrade"
-                  "sec-websocket-key" key
+                  "sec-websocket-key" (key-gen)
                   "sec-websocket-version" "13"})]
     (st/write-struct http/st-http-req os {:path path :headers headers})
     (st/flush os)
     (let [resp (-> (st/read-struct http/st-http-resp is)
                    http/valid-version
                    (http/valid-status "101")
-                   valid-connection
-                   (valid-accept key))]
+                   (http/valid-connection "websocket"))]
       (mk-stream server true {:http-resp resp} callback))))
 
 (defn mk-server
@@ -191,7 +169,7 @@
         req (-> (st/read-struct http/st-http-req is)
                 http/valid-version
                 (http/valid-method "get")
-                valid-connection)
+                (http/valid-connection "websocket"))
         accept (-> req (get-in [:headers "sec-websocket-key"]) key->accept)
         headers (merge
                  headers
