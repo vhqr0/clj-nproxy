@@ -46,8 +46,8 @@
   (let [^SocketAddress addr (.getRemoteSocketAddress socket)]
     (addr->peer addr)))
 
-(defn socket->callback-params
-  "Convert socket to callback params."
+(defn socket->stream
+  "Convert socket to stream."
   [^Socket socket]
   {:socket socket
    :peer (socket->peer socket)
@@ -55,10 +55,10 @@
    :output-stream (socket->output-stream socket)})
 
 (defn socket-callback
-  "Convert socket to callback params, then invoke callback fn."
+  "Convert socket to stream, then invoke callback fn."
   [^Socket socket callback]
   (with-open [socket socket]
-    (callback (socket->callback-params socket))))
+    (callback (socket->stream socket))))
 
 (defn start-server-socket
   "Start server socket."
@@ -94,8 +94,8 @@
   (let [^SocketAddress addr (.getRemoteAddress sc)]
     (addr->peer addr)))
 
-(defn socket-channel->callback-params
-  "Convert socket channel to callback params."
+(defn socket-channel->stream
+  "Convert socket channel to stream."
   [^SocketChannel sc]
   {:socket-channel sc
    :peer (socket-channel->peer sc)
@@ -103,10 +103,10 @@
    :output-stream (socket-channel->output-stream sc)})
 
 (defn socket-channel-callback
-  "Convert socket to callback params, then invoke callback fn."
+  "Convert socket to stream, then invoke callback fn."
   [^SocketChannel sc callback]
   (with-open [sc sc]
-    (callback (socket-channel->callback-params sc))))
+    (callback (socket-channel->stream sc))))
 
 (defn start-server-socket-channel
   "Start server socket channel."
