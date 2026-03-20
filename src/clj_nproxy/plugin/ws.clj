@@ -227,10 +227,9 @@
 (defn websocket->stream
   "Convert websocket to stream."
   [websocket]
-  (merge
-   websocket
-   {:input-stream (websocket->input-stream websocket)
-    :output-stream (websocket->output-stream websocket)}))
+  {:websocket websocket
+   :input-stream (websocket->input-stream websocket)
+   :output-stream (websocket->output-stream websocket)})
 
 (defn mk-client
   "Make websocket client."
