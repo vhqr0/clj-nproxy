@@ -6,7 +6,8 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.net :as net]
             [clj-nproxy.plugin.http :as http])
-  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]))
+  (:import [java.util.concurrent.locks ReentrantLock]
+           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -21,6 +22,8 @@
     (dotimes [idx (alength data)]
       (let [i (aget mask (bit-and 3 idx))]
         (aset data idx (unchecked-byte (bit-xor i (aget data idx))))))))
+
+;;; frame
 
 (defn read-fin-op
   "Read op from stream."
@@ -85,52 +88,71 @@
     (mask-data-inplace data mask))
   (st/write os data))
 
-;; ignore ping pong: it's stupid
-
-(defn wrap-input-stream
-  "Wrap input stream."
-  ^InputStream [^InputStream is]
-  (let [read-fn (fn []
-                  (let [{:keys [op data]} (read-frame is)]
-                    (case (int op)
-                      (0 9 10) (recur)
-                      8 nil
-                      2 (if-not (zero? (b/length data))
-                          data
-                          (recur))
-                      (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))]
-    (BufferedInputStream.
-     (st/read-fn->input-stream read-fn #(st/close is)))))
-
-(defn wrap-output-stream
-  "Wrap output stream."
-  ^OutputStream [^OutputStream os mask?]
-  (let [write-frame-fn (fn [op data]
-                         (write-frame os {:op op :fin? true :mask (when mask? (b/rand 4)) :data data})
+(defn mk-websocket
+  "Make websocket."
+  [stream mask? callback]
+  (let [{is :input-stream os :output-stream} stream
+        ^ReentrantLock lock (ReentrantLock.)
+        vwclose? (volatile! false)
+        vrclose? (volatile! false)
+        close?-fn (fn [] @vrclose? @vwclose?)
+        write-fn (fn [{:keys [op] :as frame}]
+                   (when-not @vwclose?
+                     (try
+                       (.lock lock)
+                       (when-not @vwclose?
+                         (when (= op 8)
+                           (vreset! vwclose? true))
+                         (write-frame os (merge frame {:mask (when mask? (b/rand 4))}))
                          (st/flush os))
-        write-fn (fn [b]
-                   (when-not (zero? (b/length b))
-                     (write-frame-fn 2 b)))
+                       (finally
+                         (.unlock lock)))))
         close-fn (fn []
-                   (write-frame-fn 8 (byte-array []))
-                   (st/close os))]
-    (BufferedOutputStream.
-     (st/write-fn->output-stream write-fn close-fn))))
+                   (write-fn {:op 8 :fin? true :data (byte-array 0)}))
+        ping-fn (fn [data]
+                  (write-fn {:op 9 :fin? true :data data}))
+        read-fn (fn []
+                  (when-not @vrclose?
+                    (loop []
+                      (let [{:keys [op fin? data] :as frame} (read-frame is)]
+                        (case (long op)
+                          ;; close
+                          8 (do
+                              (vreset! vrclose? true)
+                              (close-fn))
+                          ;; ping
+                          9 (do
+                              (write-fn {:op 10 :fin? fin? :data data})
+                              (recur))
+                          ;; pong
+                          10 (recur)
+                          ;; continue/text/binary
+                          (0 1 2) frame
+                          (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))))
+        wait-closed-fn (fn []
+                         (loop []
+                           (when-not @vrclose?
+                             (read-fn)
+                             (recur))))
+        websocket {:stream stream
+                   :close?-fn close?-fn
+                   :write-fn write-fn
+                   :close-fn close-fn
+                   :ping-fn ping-fn
+                   :read-fn read-fn
+                   :wait-closed-fn wait-closed-fn}]
+    (try
+      (callback websocket)
+      (finally
+        (close-fn)
+        (wait-closed-fn)
+        (st/close is)
+        (st/close os)))))
 
-(defn mk-stream
-  "Make websocket stream."
-  [{is :input-stream os :output-stream} mask? info callback]
-  (with-open [is (wrap-input-stream is)
-              os (wrap-output-stream os mask?)]
-    (callback (merge info {:input-stream is :output-stream os}))))
+;;; handshake
 
 (def ws-uuid
   "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-
-(defn key-gen
-  "Generate key."
-  []
-  (b/bytes->base64 (b/rand 16)))
 
 (defn key->accept
   "Get accept from key."
@@ -142,7 +164,7 @@
   (key->accept (b/bytes->base64 (byte-array 16))) ; => "ICX+Yqv66kxgM0FcWaLWlFLwTAI="
   )
 
-(defn mk-client
+(defn mk-websocket-client
   "Make websocket client."
   [server opts callback]
   (let [{is :input-stream os :output-stream} server
@@ -151,7 +173,7 @@
                  headers
                  {"upgrade" "websocket"
                   "connection" "upgrade"
-                  "sec-websocket-key" (key-gen)
+                  "sec-websocket-key" (b/bytes->base64 (b/rand 16))
                   "sec-websocket-version" "13"})]
     (st/write-struct http/st-http-req os {:path path :headers headers})
     (st/flush os)
@@ -159,9 +181,9 @@
                    http/valid-version
                    (http/valid-status "101")
                    (http/valid-connection "websocket"))]
-      (mk-stream server true {:http-resp resp} callback))))
+      (mk-websocket server true #(callback (merge % {:http-resp resp}))))))
 
-(defn mk-server
+(defn mk-websocket-server
   "Make websocket server."
   [client opts callback]
   (let [{is :input-stream os :output-stream} client
@@ -178,7 +200,53 @@
                   "sec-websocket-accept" accept})]
     (st/write-struct http/st-http-resp os {:status "101" :reason "Switching Protocols" :headers headers})
     (st/flush os)
-    (mk-stream client false {:http-req req} callback)))
+    (mk-websocket client false #(callback (merge % {:http-req req})))))
+
+;;; stream
+
+(defn websocket->input-stream
+  "Convert websocket to input stream."
+  ^InputStream [{:keys [read-fn]}]
+  (BufferedInputStream.
+   (st/read-fn->input-stream
+    (fn []
+      (when-let [{:keys [data]} (read-fn)]
+        (if-not (zero? (b/length data))
+          data
+          (recur)))))))
+
+(defn websocket->output-stream
+  "Convert websocket to output stream."
+  ^OutputStream [{:keys [write-fn]}]
+  (BufferedOutputStream.
+   (st/write-fn->output-stream
+    (fn [b]
+      (when-not (zero? (b/length b))
+        (write-fn {:op 2 :fin? true :data b}))))))
+
+(defn websocket->stream
+  "Convert websocket to stream."
+  [websocket]
+  (merge
+   websocket
+   {:input-stream (websocket->input-stream websocket)
+    :output-stream (websocket->output-stream websocket)}))
+
+(defn mk-client
+  "Make websocket client."
+  [server opts callback]
+  (mk-websocket-client
+   server opts
+   (fn [server]
+     (callback (websocket->stream server)))))
+
+(defn mk-server
+  "Make websocket server."
+  [client opts callback]
+  (mk-websocket-server
+   client opts
+   (fn [client]
+     (callback (websocket->stream client)))))
 
 (defmethod net/mk-client :ws [opts callback]
   (net/mk-client

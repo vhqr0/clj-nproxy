@@ -1,5 +1,6 @@
 (ns clj-nproxy.plugin.ws-test
   (:require [clojure.test :refer [deftest is]]
+            [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]
             [clj-nproxy.plugin.ws :as ws]))
@@ -12,15 +13,14 @@
                  (fn [server]
                    (proxy/mk-client
                     server {:type :http} "example.com" 80
-                    (fn [{is :input-stream os :output-stream}]
-                      (st/close os)
-                      (st/read-eof is))))))
+                    (fn [{is :input-stream}]
+                      (st/read-bytes is 1))))))
               (fn [client]
                 (ws/mk-server
                  client nil
                  (fn [client]
                    (proxy/mk-server
                     client {:type :http}
-                    (fn [{is :input-stream os :output-stream}]
-                      (st/close os)
-                      (st/read-eof is))))))))))
+                    (fn [{os :output-stream}]
+                      (st/write os (b/rand 1))
+                      (st/close os))))))))))
