@@ -95,7 +95,7 @@
         ^ReentrantLock lock (ReentrantLock.)
         vwclose? (volatile! false)
         vrclose? (volatile! false)
-        close?-fn (fn [] @vrclose? @vwclose?)
+        close?-fn (fn [] (or @vrclose? @vwclose?))
         write-fn (fn [{:keys [op] :as frame}]
                    (when-not @vwclose?
                      (try
@@ -229,7 +229,7 @@
   [websocket]
   {:websocket websocket
    :input-stream (websocket->input-stream websocket)
-   :output-stream (websocket->output-stream websocket)})
+    :output-stream (websocket->output-stream websocket)})
 
 (defn mk-client
   "Make websocket client."
