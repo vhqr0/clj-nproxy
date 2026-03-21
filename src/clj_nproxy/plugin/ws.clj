@@ -229,7 +229,7 @@
   [websocket]
   {:websocket websocket
    :input-stream (websocket->input-stream websocket)
-    :output-stream (websocket->output-stream websocket)})
+   :output-stream (websocket->output-stream websocket)})
 
 (defn mk-client
   "Make websocket client."
