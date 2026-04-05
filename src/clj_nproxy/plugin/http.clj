@@ -2,7 +2,8 @@
   "HTTP proxy impl."
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
-            [clj-nproxy.proxy :as proxy]))
+            [clj-nproxy.proxy :as proxy])
+  (:import [java.io ByteArrayInputStream SequenceInputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -93,8 +94,8 @@
   (st/unpack st-http-req (.getBytes "GET / HTTP/1.1\r\n\r\n")) ; => {:method "GET" :path "/" :version "HTTP/1.1" :headers {}}
   )
 
-(def hostport-re #"^([^:]+):(\d+)$")
-(def bracketed-hostport-re #"^\[([^\[\]]+)\]:(\d+)$")
+(def hostport-re #"^([^:]+)(:(\d+))?$")
+(def bracketed-hostport-re #"^\[([^\[\]]+)\](:(\d+))?$")
 
 (defn unpack-hostport
   "Unpack host port."
@@ -102,7 +103,7 @@
   (let [re (if (= \[ (first s)) bracketed-hostport-re hostport-re)]
     (if-let [matches (re-matches re s)]
       (let [host (get matches 1)
-            port (parse-long (get matches 2))]
+            port (some-> (get matches 3) parse-long)]
         [host port])
       (throw (ex-info "invalid hostport" {:reason ::invalid-hostport :hostport s})))))
 
@@ -116,6 +117,8 @@
 (comment
   (unpack-hostport "example.com:80") ; => ["example.com" 80]
   (unpack-hostport "[2000::1]:443") ; => ["2000::1" 443]
+  (unpack-hostport "example.com") ; => ["example.com" nil]
+  (unpack-hostport "[2000::1]") ; => ["2000::1" nil]
   (pack-hostport "example.com" 80) ; => "example.com:80"
   (pack-hostport "2000::1" 443) ; => "[2000::1]:443"
   )
@@ -162,13 +165,27 @@
     (let [resp (-> (st/read-struct st-http-resp is) valid-version (valid-status "200"))]
       (callback {:http-resp resp :input-stream is :output-stream os}))))
 
-;; limited: only accept connect method with explicit port
-
-(defmethod proxy/mk-server :http [client {:keys [headers]} callback]
+(defmethod proxy/mk-server :http [client _opts callback]
   (let [{is :input-stream os :output-stream} client
-        {:keys [path] :as req} (-> (st/read-struct st-http-req is) valid-version (valid-method "connect"))
-        [host port] (unpack-hostport path)
-        headers (merge {"connection" "close"} headers)]
-    (st/write-struct st-http-resp os {:headers headers})
-    (st/flush os)
-    (callback {:http-req req :input-stream is :output-stream os :host host :port port})))
+        {:keys [method] :as req} (-> (st/read-struct st-http-req is) valid-version)]
+    (if (= "connect" (str/lower-case method))
+      ;; connect
+      (let [{:keys [path]} req
+            [host port] (unpack-hostport path)]
+        (st/write-struct st-http-resp os {:headers {"connection" "close"}})
+        (st/flush os)
+        (callback {:http-req req :input-stream is :output-stream os :host host :port (or port 443)}))
+      ;; get, post, ...
+      (let [{:keys [headers]} req
+            [host port] (or (some-> (get headers "host") unpack-hostport)
+                            (ex-info "no hostport" {:reason ::no-hostport}))
+            ;; remove proxy- headers
+            headers (->> headers
+                         (remove
+                          (fn [[k _v]]
+                            (str/starts-with? k "proxy-")))
+                         (into {}))
+            req-bytes (st/pack st-http-req (assoc req :headers headers))
+            req-is (ByteArrayInputStream. req-bytes)
+            is (SequenceInputStream. req-is is)]
+        (callback {:http-req req :input-stream is :output-stream os :host host :port (or port 80)})))))
