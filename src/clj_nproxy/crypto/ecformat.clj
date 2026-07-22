@@ -59,23 +59,3 @@
 (def x448-pub->bytes (partial xec-pub->bytes 56))
 (def bytes->x25519-pub (partial bytes->xec-pub "X25519"))
 (def bytes->x448-pub (partial bytes->xec-pub "X448"))
-
-;;; test
-
-(defn sim-agreement
-  "Simulate key agreement."
-  [gen-fn agreement-fn pub->bytes-fn bytes->pub-fn]
-  (let [[pri1 pub1] (gen-fn)
-        [pri2 pub2] (gen-fn)]
-    (zero? (b/compare
-            (agreement-fn pri1 (-> pub2 pub->bytes-fn bytes->pub-fn))
-            (agreement-fn pri2 (-> pub1 pub->bytes-fn bytes->pub-fn))))))
-
-^:rct/test
-(comment
-  (sim-agreement crypto/secp256r1-gen crypto/secp256r1-agreement secp256r1-pub->bytes bytes->secp256r1-pub) ; => true
-  (sim-agreement crypto/secp384r1-gen crypto/secp384r1-agreement secp384r1-pub->bytes bytes->secp384r1-pub) ; => true
-  (sim-agreement crypto/secp521r1-gen crypto/secp521r1-agreement secp521r1-pub->bytes bytes->secp521r1-pub) ; => true
-  (sim-agreement crypto/x25519-gen crypto/x25519-agreement x25519-pub->bytes bytes->x25519-pub) ; => true
-  (sim-agreement crypto/x448-gen crypto/x448-agreement x448-pub->bytes bytes->x448-pub) ; => true
-  )

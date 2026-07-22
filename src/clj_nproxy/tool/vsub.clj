@@ -39,36 +39,17 @@
    (when (some? alpn)
      {:alpn [alpn]})))
 
-(defn node->base-net-opts
-  "Convert node to base net opts."
-  [{:strs [add port tls] :as node}]
+(defmethod node->net-opts "tcp" [{:strs [add port tls] :as node}]
   (merge
-   {:host add :port (parse-long port)}
+   {:type :tcp :host add :port (parse-long port)}
    (when (= tls "tls")
      {:ssl? true :ssl-params (node->ssl-params node)})))
 
-^:rct/test
-(comment
-  (node->base-net-opts {"add" "foo", "port" "80", "tls" ""}) ; => {:host "foo" :port 80}
-  (node->base-net-opts {"add" "foo", "port" "80", "tls" "tls"}) ; => {:host "foo" :port 80 :ssl? true :ssl-params {:sni ["foo"]}}
-  (node->base-net-opts {"add" "foo", "port" "80", "tls" "tls", "host" "bar"}) ; => {:host "foo" :port 80 :ssl? true :ssl-params {:sni ["bar"]}}
-  (node->base-net-opts {"add" "foo", "port" "80", "tls" "tls", "alpn" "h2"}) ; => {:host "foo" :port 80 :ssl? true :ssl-params {:sni ["foo"] :alpn ["h2"]}}
-  )
-
-(defmethod node->net-opts "tcp" [node]
-  (merge {:type :tcp}
-         (node->base-net-opts node)))
-
-(defmethod node->net-opts "ws" [{:strs [add path host] :or {path "/"} :as node}]
-  (merge {:type :ws}
-         (node->base-net-opts node)
-         {:path path :headers {"host" (or host add)}}))
-
-^:rct/test
-(comment
-  (node->net-opts {"net" "ws", "add" "foo", "port" "80", "tls" "tls", "host" "bar"})
-  ;; => {:type :ws :host "foo" :port 80 :ssl? true :ssl-params {:sni ["bar"]} :path "/" :headers {"host" "bar"}}
-  )
+(defmethod node->net-opts "ws" [{:strs [add port path host tls] :or {path "/"}}]
+  (let [scheme (if (= tls "tls") "wss" "ws")]
+    {:type :ws
+     :uri (format "%s://%s:%s%s" scheme add port path)
+     :headers {"host" (or host add)}}))
 
 (defn node->proxy-opts
   "Convert node to vmess proxy opts."

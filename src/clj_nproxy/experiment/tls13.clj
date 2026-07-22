@@ -1,4 +1,4 @@
-(ns clj-nproxy.plugin.tls13
+(ns clj-nproxy.experiment.tls13
   "TLS 1.3 impl.
   https://www.rfc-editor.org/rfc/rfc8446"
   (:require [clojure.set :as set]
@@ -7,7 +7,7 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.crypto.ecformat :as ecf]
             [clj-nproxy.crypto.keystore :as ks])
-  (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
+  (:import [java.io InputStream OutputStream]
            [java.security PrivateKey PublicKey]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -32,12 +32,6 @@
       (st/wrap
        #(st/unpack st/st-uint-be (b/right-align % 4))
        #(b/copy-of-range (st/pack st/st-uint-be %) 1 4))))
-
-^:rct/test
-(comment
-  (seq (st/pack st-uint24 1)) ; => [0 0 1]
-  (st/unpack st-uint24 (byte-array [0 0 1])) ; => 1
-  )
 
 ;;;; const
 
@@ -179,13 +173,6 @@
    (b/cat content (byte-array [type])))
   ([type content plen]
    (b/cat content (byte-array [type]) (byte-array plen))))
-
-^:rct/test
-(comment
-  (-> (unpack-inner-plaintext (byte-array [1 2 3 4 0 0])) (update 1 seq)) ; => [4 [1 2 3] 2]
-  (seq (pack-inner-plaintext 1 (byte-array [2 3 4]))) ; => [2 3 4 1]
-  (seq (pack-inner-plaintext 1 (byte-array [2 3 4]) 2)) ; => [2 3 4 1 0 0]
-  )
 
 ;;;;; change cipher spec
 
@@ -1878,7 +1865,7 @@
                         (let [{:keys [type content]} (st/read-struct st-record is)]
                           (swap! acontext recv-record type content)
                           (recur))))))]
-    (BufferedInputStream. (st/read-fn->input-stream read-fn #(st/close is)))))
+    (st/read-fn->buffered-input-stream read-fn #(st/close is))))
 
 (defn wrap-output-stream
   "Wrap output stream."
@@ -1901,7 +1888,7 @@
                        (run! (partial st/write os) send-bytes)
                        (st/flush os))
                      (st/close os)))]
-    (BufferedOutputStream. (st/write-fn->output-stream write-fn close-fn))))
+    (st/write-fn->buffered-output-stream write-fn close-fn)))
 
 (defn mk-stream
   "Wrap tls13 on stream."

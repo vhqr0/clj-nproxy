@@ -1,28 +1,13 @@
-(ns clj-nproxy.plugin.tcp
+(ns clj-nproxy.tcp
   "TCP net impl."
   (:require [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])
   (:import [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream]
-           [java.nio.channels Channels SocketChannel ServerSocketChannel]
-           [java.net InetAddress SocketAddress InetSocketAddress UnixDomainSocketAddress Socket ServerSocket StandardProtocolFamily]
+           [java.net InetAddress InetSocketAddress Socket ServerSocket]
            [javax.net SocketFactory ServerSocketFactory]
            [javax.net.ssl SSLSession SSLSocket SSLServerSocket SSLSocketFactory SSLServerSocketFactory SSLParameters SNIHostName]))
 
 (set! clojure.core/*warn-on-reflection* true)
-
-(defn addr->peer
-  "Convert socket address to peer info."
-  [^SocketAddress addr]
-  (cond
-    (instance? InetSocketAddress addr)
-    (let [^InetSocketAddress addr addr]
-      {:host (.getHostString addr)
-       :port (.getPort addr)})
-    (instance? UnixDomainSocketAddress addr)
-    (let [^UnixDomainSocketAddress addr addr]
-      {:path (str addr)})))
-
-;;; socket
 
 (defn socket->input-stream
   "Get socket input stream."
@@ -43,8 +28,9 @@
 (defn socket->peer
   "Convert socket to peer info."
   [^Socket socket]
-  (let [^SocketAddress addr (.getRemoteSocketAddress socket)]
-    (addr->peer addr)))
+  (let [^InetSocketAddress addr (.getRemoteSocketAddress socket)]
+    {:host (.getHostString addr)
+     :port (.getPort addr)}))
 
 (defn socket->stream
   "Convert socket to stream."
@@ -57,8 +43,10 @@
 (defn socket-callback
   "Convert socket to stream, then invoke callback fn."
   [^Socket socket callback]
-  (with-open [socket socket]
-    (callback (socket->stream socket))))
+  (try
+    (callback (socket->stream socket))
+    (finally
+      (st/safe-close socket))))
 
 (defn start-server-socket
   "Start server socket."
@@ -69,56 +57,6 @@
         (Thread/startVirtualThread
          #(socket-callback socket callback)))
       (recur))))
-
-;;; socket channel
-
-(defn socket-channel->input-stream
-  "Get socket channel input stream."
-  ^InputStream [^SocketChannel sc]
-  (BufferedInputStream.
-   (st/input-stream-with-close-fn
-    (Channels/newInputStream sc)
-    #(.shutdownInput sc))))
-
-(defn socket-channel->output-stream
-  "Get socket channel output stream."
-  ^OutputStream [^SocketChannel sc]
-  (BufferedOutputStream.
-   (st/output-stream-with-close-fn
-    (Channels/newOutputStream sc)
-    #(.shutdownOutput sc))))
-
-(defn socket-channel->peer
-  "Convert socket channel to peer info."
-  [^SocketChannel sc]
-  (let [^SocketAddress addr (.getRemoteAddress sc)]
-    (addr->peer addr)))
-
-(defn socket-channel->stream
-  "Convert socket channel to stream."
-  [^SocketChannel sc]
-  {:socket-channel sc
-   :peer (socket-channel->peer sc)
-   :input-stream (socket-channel->input-stream sc)
-   :output-stream (socket-channel->output-stream sc)})
-
-(defn socket-channel-callback
-  "Convert socket to stream, then invoke callback fn."
-  [^SocketChannel sc callback]
-  (with-open [sc sc]
-    (callback (socket-channel->stream sc))))
-
-(defn start-server-socket-channel
-  "Start server socket channel."
-  [^ServerSocketChannel server callback]
-  (with-open [server server]
-    (loop []
-      (let [sc (.accept server)]
-        (Thread/startVirtualThread
-         #(socket-channel-callback sc callback))
-        (recur)))))
-
-;;; tcp
 
 (defn mk-socket
   "Make tcp socket."
@@ -176,8 +114,6 @@
      #(start-server-socket server callback))
     server))
 
-;;;; ssl utils
-
 (defn ssl-socket->alpn
   "Get application protocol from ssl socket."
   ^String [^SSLSocket socket]
@@ -188,19 +124,3 @@
   [^SSLSocket socket]
   (let [^SSLSession session (.getSession socket)]
     (.getPeerCertificates session)))
-
-;;; unix
-
-(defmethod net/mk-client :unix [opts callback]
-  (let [{:keys [^String path]} opts
-        ^SocketChannel sc (SocketChannel/open StandardProtocolFamily/UNIX)]
-    (.connect sc (UnixDomainSocketAddress/of path))
-    (socket-channel-callback sc callback)))
-
-(defmethod net/mk-server :unix [opts callback]
-  (let [{:keys [^String path]} opts
-        ^ServerSocketChannel server (ServerSocketChannel/open StandardProtocolFamily/UNIX)]
-    (.bind server (UnixDomainSocketAddress/of path))
-    (Thread/startVirtualThread
-     #(start-server-socket-channel server callback))
-    server))

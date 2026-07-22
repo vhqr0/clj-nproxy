@@ -1,10 +1,25 @@
-(ns clj-nproxy.plugin.tls13-test
+(ns clj-nproxy.experiment.tls13-test
   (:require [clojure.test :refer [deftest testing is]]
             [clojure.java.io :as io]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto.keystore :as ks]
-            [clj-nproxy.plugin.tls13 :as tls13]))
+            [clj-nproxy.experiment.tls13 :as tls13]))
+
+(deftest uint24-test
+  (is (= [0 0 1]
+         (-> tls13/st-uint24 (st/pack 1) seq)))
+  (is (= 1
+         (-> tls13/st-uint24 (st/unpack (byte-array [0 0 1]))))))
+
+(deftest inner-plaintext-test
+  (is (= [4 [1 2 3] 2]
+         (-> (tls13/unpack-inner-plaintext (byte-array [1 2 3 4 0 0]))
+             (update 1 seq))))
+  (is (= [2 3 4 1]
+         (seq (tls13/pack-inner-plaintext 1 (byte-array [2 3 4])))))
+  (is (= [2 3 4 1 0 0]
+         (seq (tls13/pack-inner-plaintext 1 (byte-array [2 3 4]) 2)))))
 
 (defn read-resource
   [resource]

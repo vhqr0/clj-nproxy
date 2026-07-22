@@ -25,12 +25,6 @@
 (def sha384 (partial digest "SHA-384"))
 (def sha512 (partial digest "SHA-512"))
 
-^:rct/test
-(comment
-  (b/bytes->hex (md5 (.getBytes "hello"))) ; => "5d41402abc4b2a76b9719d911017c592"
-  (b/bytes->hex (sha256 (.getBytes "hello"))) ; => "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-  )
-
 ;;; hmac
 
 (defn hmac
@@ -43,12 +37,6 @@
 
 (def hmac-sha256 (partial hmac "HMACSHA256"))
 (def hmac-sha384 (partial hmac "HMACSHA384"))
-
-^:rct/test
-(comment
-  (b/bytes->hex (hmac-sha256 (.getBytes "hello") (.getBytes "world"))) ; => "f1ac9702eb5faf23ca291a4dc46deddeee2a78ccdaf0a412bed7714cfffb1cc4"
-  (b/bytes->hex (hmac-sha384 (.getBytes "hello") (.getBytes "world"))) ; => "80d036d9974e6f71ceabe493ee897d00235edcc4c72e046ddfc8bf68e86a477d63b9f7d26ad5b990aae6ac17db57ddcf"
-  )
 
 ;;; hkdf
 
@@ -85,12 +73,6 @@
 (def hkdf-expand-sha384 (partial hkdf-expand "HKDF-SHA384"))
 (def hkdf-sha256 (partial hkdf "HKDF-SHA256"))
 (def hkdf-sha384 (partial hkdf "HKDF-SHA384"))
-
-^:rct/test
-(comment
-  (b/bytes->hex (hkdf-sha256 (.getBytes "hello") (.getBytes "world") (.getBytes "info") 16)) ; => "67b45533c1158431eb5176fc56fd0fb7"
-  (b/bytes->hex (hkdf-expand-sha256 (hkdf-extract-sha256 (.getBytes "hello") (.getBytes "world")) (.getBytes "info") 16)) ; => "67b45533c1158431eb5176fc56fd0fb7"
-  )
 
 ;;; crypt
 
@@ -298,22 +280,6 @@
         ed-name (.getName named-params)]
     (get ed-name-map ed-name)))
 
-;;;;; test
-
-^:rct/test
-(comment
-  (sim-agreement secp256r1-gen secp256r1-agreement) ; => true
-  (sim-agreement secp384r1-gen secp384r1-agreement) ; => true
-  (sim-agreement secp521r1-gen secp521r1-agreement) ; => true
-  (sim-agreement x25519-gen x25519-agreement) ; => true
-  (sim-agreement x448-gen x448-agreement) ; => true
-  (sim-sign-verify secp256r1-gen secp256r1-sha256-sign secp256r1-sha256-verify (b/rand 16)) ; => true
-  (sim-sign-verify secp384r1-gen secp384r1-sha384-sign secp384r1-sha384-verify (b/rand 16)) ; => true
-  (sim-sign-verify secp521r1-gen secp521r1-sha512-sign secp521r1-sha512-verify (b/rand 16)) ; => true
-  (sim-sign-verify ed25519-gen ed25519-sign ed25519-verify (b/rand 16)) ; => true
-  (sim-sign-verify ed448-gen ed448-sign ed448-verify (b/rand 16)) ; => true
-  )
-
 ;;;; rsa
 
 (defn rsa-gen-params
@@ -353,9 +319,3 @@
       (>= key-size 4096) :rsa-4096
       (>= key-size 3072) :rsa-3072
       (>= key-size 2048) :rsa-2048)))
-
-^:rct/test
-(comment
-  (sim-sign-verify rsa-2048-gen rsa-pkcs1-sha256-sign rsa-pkcs1-sha256-verify (b/rand 16)) ; => true
-  (sim-sign-verify rsa-2048-gen rsa-pss-rsae-sha256-sign rsa-pss-rsae-sha256-verify (b/rand 16)) ; => true
-  )

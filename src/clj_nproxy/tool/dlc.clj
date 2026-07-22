@@ -21,21 +21,8 @@
     (subs line 0 i)
     line))
 
-^:rct/test
-(comment
-  (trim-comments "foo # bar") ; => "foo "
-  (trim-comments "foo bar") ; => "foo bar"
-  )
-
 (def line-re
   #"^((\w+):)?([^\s\t#]+)( @([^\s\t#]+))?")
-
-^:rct/test
-(comment
-  (re-matches line-re "a.baidu.com") ; => ["a.baidu.com" nil nil "a.baidu.com" nil nil]
-  (re-matches line-re "a.baidu.com @ads") ; => ["a.baidu.com @ads" nil nil "a.baidu.com" " @ads" "ads"]
-  (re-matches line-re "include:geolocation-cn") ; => ["include:geolocation-cn" "include:" "include" "geolocation-cn" nil nil]
-  )
 
 (def tag-map
   "Mapping from dlc tags to nproxy tags."

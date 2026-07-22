@@ -1,4 +1,4 @@
-(ns clj-nproxy.plugin.vmess
+(ns clj-nproxy.vmess
   "Vmess proxy impl.
   - vmess legacy: https://github.com/v2fly/v2fly-github-io/blob/master/docs/developer/protocols/vmess.md
   - vmess aead: https://github.com/v2fly/v2fly-github-io/issues/20/"
@@ -8,9 +8,9 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.proxy :as proxy])
   (:import [java.util.zip CRC32]
-           [java.io InputStream OutputStream BufferedInputStream BufferedOutputStream ByteArrayInputStream]
+           [java.io InputStream OutputStream ByteArrayInputStream]
            [java.security MessageDigest]
-           [org.bouncycastle.crypto.digests SHAKEDigest]))
+           [clj_nproxy.java Shake128 Fnv1a]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -25,24 +25,8 @@
 
 (defn fnv1a
   "FNV1a checksum."
-  ^bytes [^bytes b]
-  (let [b (bytes b)
-        l (alength b)
-        r 0x811c9dc5
-        p 0x01000193
-        m 0xffffffff]
-    (loop [i 0 r r]
-      (if (>= i l)
-        (st/pack st/st-uint-be r)
-        (recur
-         (unchecked-inc-int i)
-         (bit-and m (* p (bit-xor r (bit-and 0xff (aget b i))))))))))
-
-^:rct/test
-(comment
-  (b/bytes->hex (crc32 (.getBytes "hello"))) ; => "3610a686"
-  (b/bytes->hex (fnv1a (.getBytes "hello"))) ; => "4f9f2cab"
-  )
+  ^bytes [b]
+  (Fnv1a/hash b))
 
 (defn aesecb-encrypt ^bytes [key b] (crypto/encrypt "AES/ECB/NoPadding" (crypto/aes-key key) nil b nil))
 (defn aesecb-decrypt ^bytes [key b] (crypto/decrypt "AES/ECB/NoPadding" (crypto/aes-key key) nil b nil))
@@ -50,19 +34,11 @@
 (defn shake128-read-fn
   "Construct shake128 read fn."
   [^bytes b]
-  (let [d (SHAKEDigest. 128)]
-    (.update d b 0 (b/length b))
+  (let [d (Shake128. b)]
     (fn [n]
       (let [b (byte-array n)]
         (.doOutput d b 0 n)
         b))))
-
-^:rct/test
-(comment
-  (def test-read-fn (shake128-read-fn (.getBytes "hello")))
-  (b/bytes->hex (test-read-fn 4)) ; => "8eb4b6a9"
-  (b/bytes->hex (test-read-fn 4)) ; => "32f28033"
-  )
 
 ;;; vmess
 
@@ -432,8 +408,7 @@
                     (when-not (zero? plen)
                       (st/read-bytes is plen))
                     (sec-decrypt sec key iv edata)))]
-    (BufferedInputStream.
-     (st/read-fn->input-stream read-fn #(st/close is)))))
+    (st/read-fn->buffered-input-stream read-fn #(st/close is))))
 
 (defn wrap-output-stream
   "Wrap vmess over output stream."
@@ -459,25 +434,23 @@
         close-fn (fn []
                    (write-frame-fn (byte-array 0))
                    (st/close os))]
-    (BufferedOutputStream.
-     (st/write-fn->output-stream write-fn close-fn))))
+    (st/write-fn->buffered-output-stream write-fn close-fn)))
 
 (defmethod proxy/mk-client :vmess [server {:keys [id] :as opts} host port callback]
   (let [{is :input-stream os :output-stream} server
         {:keys [key iv rkey riv] :as params} (->params opts)
         pre-read-fn #(read-resp is params)
         pre-write-fn #(st/write os (->ereq id params host port))]
-    (with-open [is (wrap-input-stream is params rkey riv pre-read-fn)
-                os (wrap-output-stream os params key iv pre-write-fn)]
-      (callback {:input-stream is :output-stream os}))))
+    (callback {:input-stream (wrap-input-stream is params rkey riv pre-read-fn)
+               :output-stream (wrap-output-stream os params key iv pre-write-fn)})))
 
 (defmethod proxy/mk-server :vmess [client {:keys [id]} callback]
   (let [{is :input-stream os :output-stream} client
         [host port {:keys [key iv rkey riv] :as params} _eaid] (read-req is id)
         pre-write-fn #(st/write os (->eresp params))]
-    (with-open [is (wrap-input-stream is params key iv)
-                os (wrap-output-stream os params rkey riv pre-write-fn)]
-      (callback {:input-stream is :output-stream os :host host :port port}))))
+    (callback {:input-stream (wrap-input-stream is params key iv)
+               :output-stream (wrap-output-stream os params rkey riv pre-write-fn)
+               :host host :port port})))
 
 (defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))

@@ -1,8 +1,12 @@
-(ns clj-nproxy.plugin.socks5-test
+(ns clj-nproxy.socks5-test
   (:require [clojure.test :refer [deftest is]]
             [clj-nproxy.struct :as st]
             [clj-nproxy.proxy :as proxy]
-            clj-nproxy.plugin.socks5))
+            [clj-nproxy.socks5 :as socks5]))
+
+(deftest trojan-auth-test
+  (is (= "ea09ae9cc6768c50fcee903ed054556e5bfc8347907f12598aa24193"
+         (socks5/trojan-auth "hello"))))
 
 (deftest socks5-test
   (is (some? (st/sim-conn
@@ -20,4 +24,17 @@
                 (proxy/mk-server
                  client
                  {:type :socks5 :auth {:username "user" :password "pwd"}}
+                 (fn [_])))))))
+
+(deftest trojan-test
+  (is (some? (st/sim-conn
+              (fn [server]
+                (proxy/mk-client
+                 server
+                 (proxy/edn->client-opts {:type :trojan :password "hello"})
+                 "example.com" 80 (fn [_])))
+              (fn [client]
+                (proxy/mk-server
+                 client
+                 (proxy/edn->server-opts {:type :trojan :password "hello"})
                  (fn [_])))))))

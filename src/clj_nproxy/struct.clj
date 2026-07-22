@@ -3,21 +3,42 @@
   (:refer-clojure :exclude [flush keys])
   (:require [clj-nproxy.bytes :as b])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
-           [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream PipedInputStream PipedOutputStream]
-           [java.nio ByteBuffer ByteOrder]))
+           [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream BufferedInputStream BufferedOutputStream PipedInputStream PipedOutputStream]
+           [clj_nproxy.java IOUtils FnInputStream FnOutputStream FilterCloseInputStream FilterCloseOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
-
-(defn read-all
-  "Read all bytes."
-  ^bytes [^InputStream is]
-  (.readAllBytes is))
 
 (defn read-eof
   "Read eof."
   [^InputStream is]
   (when-not (= -1 (.read is))
     (throw (ex-info "data surplus" {:reason ::data-surplus}))))
+
+(defn read-all
+  "Read all bytes."
+  ^bytes [^InputStream is]
+  (.readAllBytes is))
+
+(defn read-bytes
+  "Read n bytes from stream."
+  ^bytes [^InputStream is ^long len]
+  (let [b (.readNBytes is (int len))]
+    (if (= len (alength b))
+      b
+      (throw (ex-info "end of file" {:reason ::end-of-file})))))
+
+(defn read-ubyte
+  "Read unsigned byte from stream."
+  ^long [^InputStream is]
+  (let [n (.read is)]
+    (if-not (= -1 n)
+      n
+      (throw (ex-info "end of file" {:reason ::end-of-file})))))
+
+(defn read-byte
+  "Read byte from stream."
+  [^InputStream is]
+  (unchecked-byte (read-ubyte is)))
 
 (defn write
   "Write bytes to stream."
@@ -113,12 +134,6 @@
        (partial unpack-many wrap-st)
        (partial pack-many wrap-st))))
 
-^:rct/test
-(comment
-  (seq (pack (wrap-many-struct (->st-var-bytes st-ubyte) st-ushort-be) [1 2])) ; => [4 0 1 0 2]
-  (unpack (wrap-many-struct (->st-var-bytes st-ubyte) st-ushort-be) (byte-array [4 0 1 0 2])) ; => [1 2]
-  )
-
 (defn wrap-validator
   "Wrap validator.
   validator:
@@ -130,12 +145,6 @@
                      data
                      (throw (ex-info "invalid data" {:reason ::invalid-data}))))]
     (-> st (wrap valid-fn valid-fn))))
-
-^:rct/test
-(comment
-  (seq (pack (wrap-validator st-byte pos?) 1)) ; => [1]
-  (unpack (wrap-validator st-byte pos?) (byte-array [1])) ; => 1
-  )
 
 (defn read-tuple
   "Read tuple from stream."
@@ -163,12 +172,6 @@
   "Construct tuple struct."
   [& sts]
   (->TupleStruct sts))
-
-^:rct/test
-(comment
-  (seq (pack (tuple st-ubyte st-ubyte) [1 2])) ; => [1 2]
-  (unpack (tuple st-ubyte st-ubyte) (byte-array [1 2])) ; => [1 2]
-  )
 
 (defn read-keys
   "Read keys from stream."
@@ -201,12 +204,6 @@
   [& ksts]
   (->KeysStruct (partition 2 ksts)))
 
-^:rct/test
-(comment
-  (seq (pack (keys :a st-ubyte :b st-ubyte) {:a 1 :b 2})) ; => [1 2]
-  (unpack (keys :a st-ubyte :b st-ubyte) (byte-array [1 2])) ; => {:a 1 :b 2}
-  )
-
 (defn read-coll
   "Read coll from stream."
   [^InputStream is len st]
@@ -234,12 +231,6 @@
   [len st]
   (->CollStruct len st))
 
-^:rct/test
-(comment
-  (seq (pack (coll-of 2 st-ushort-be) [1 2])) ; => [0 1 0 2]
-  (unpack (coll-of 2 st-ushort-be) (byte-array [0 1 0 2])) ; => [1 2]
-  )
-
 (defn read-var-coll
   "Read var coll from stream."
   [^InputStream is st-len st]
@@ -262,25 +253,7 @@
   [st-len st]
   (->VarCollStruct st-len st))
 
-^:rct/test
-(comment
-  (seq (pack (var-coll-of st-ubyte st-ushort-be) [1 2])) ; => [2 0 1 0 2]
-  (unpack (var-coll-of st-ubyte st-ushort-be) (byte-array [2 0 1 0 2])) ; => [1 2]
-  )
-
 ;;; bytes
-
-(defn read-bytes
-  "Read n bytes from stream."
-  ^bytes [^InputStream is ^long len]
-  (let [b (byte-array len)]
-    (loop [off 0]
-      (if (= off len)
-        b
-        (let [n (.read is b off (- len off))]
-          (if (= -1 n)
-            (throw (ex-info "end of file" {:reason ::end-of-file}))
-            (recur (+ n off))))))))
 
 (defrecord BytesStruct [^long len]
   Struct
@@ -338,19 +311,6 @@
 
 ;;;; byte
 
-(defn read-ubyte
-  "Read unsigned byte from stream."
-  ^long [^InputStream is]
-  (let [n (.read is)]
-    (if (= -1 n)
-      (throw (ex-info "end of file" {:reason ::end-of-file}))
-      n)))
-
-(defn read-byte
-  "Read byte from stream."
-  [^InputStream is]
-  (unchecked-byte (read-ubyte is)))
-
 (defrecord ByteStruct []
   Struct
   (read-struct [_ is] (read-byte is))
@@ -364,40 +324,31 @@
 (def st-byte (->ByteStruct))
 (def st-ubyte (->UByteStruct))
 
-^:rct/test
-(comment
-  (seq (pack st-byte 127)) ; => [127]
-  (seq (pack st-byte -128)) ; => [-128]
-  (seq (pack st-ubyte 255)) ; => [-1]
-  (unpack st-byte (byte-array [-1])) ; => -1
-  (unpack st-ubyte (byte-array [-1])) ; => 255
-  )
-
 ;;;; number
 
-(defn unpack-short-be  [^bytes b] (-> b (ByteBuffer/wrap 0 2) (.getShort 0)))
-(defn unpack-int-be    [^bytes b] (-> b (ByteBuffer/wrap 0 4) (.getInt 0)))
-(defn unpack-long-be   [^bytes b] (-> b (ByteBuffer/wrap 0 8) (.getLong 0)))
-(defn unpack-float-be  [^bytes b] (-> b (ByteBuffer/wrap 0 4) (.getFloat 0)))
-(defn unpack-double-be [^bytes b] (-> b (ByteBuffer/wrap 0 8) (.getDouble 0)))
+(defn unpack-short-be  [b] (IOUtils/unpackShortBe b))
+(defn unpack-int-be    [b] (IOUtils/unpackIntBe b))
+(defn unpack-long-be   [b] (IOUtils/unpackLongBe b))
+(defn unpack-float-be  [b] (IOUtils/unpackFloatBe b))
+(defn unpack-double-be [b] (IOUtils/unpackDoubleBe b))
 
-(defn unpack-short-le  [^bytes b] (-> b (ByteBuffer/wrap 0 2) (.order ByteOrder/LITTLE_ENDIAN) (.getShort 0)))
-(defn unpack-int-le    [^bytes b] (-> b (ByteBuffer/wrap 0 4) (.order ByteOrder/LITTLE_ENDIAN) (.getInt 0)))
-(defn unpack-long-le   [^bytes b] (-> b (ByteBuffer/wrap 0 8) (.order ByteOrder/LITTLE_ENDIAN) (.getLong 0)))
-(defn unpack-float-le  [^bytes b] (-> b (ByteBuffer/wrap 0 4) (.order ByteOrder/LITTLE_ENDIAN) (.getFloat 0)))
-(defn unpack-double-le [^bytes b] (-> b (ByteBuffer/wrap 0 8) (.order ByteOrder/LITTLE_ENDIAN) (.getDouble 0)))
+(defn unpack-short-le  [b] (IOUtils/unpackShortLe b))
+(defn unpack-int-le    [b] (IOUtils/unpackIntLe b))
+(defn unpack-long-le   [b] (IOUtils/unpackLongLe b))
+(defn unpack-float-le  [b] (IOUtils/unpackFloatLe b))
+(defn unpack-double-le [b] (IOUtils/unpackDoubleLe b))
 
-(defn pack-short-be  [^long i]   (let [b (byte-array 2)] (-> b (ByteBuffer/wrap 0 2) (.putShort 0 i)) b))
-(defn pack-int-be    [^long i]   (let [b (byte-array 4)] (-> b (ByteBuffer/wrap 0 4) (.putInt 0 i)) b))
-(defn pack-long-be   [^long i]   (let [b (byte-array 8)] (-> b (ByteBuffer/wrap 0 8) (.putLong 0 i)) b))
-(defn pack-float-be  [^double f] (let [b (byte-array 4)] (-> b (ByteBuffer/wrap 0 4) (.putFloat 0 f)) b))
-(defn pack-double-be [^double f] (let [b (byte-array 8)] (-> b (ByteBuffer/wrap 0 8) (.putDouble 0 f)) b))
+(defn pack-short-be  ^bytes [i] (IOUtils/packShortBe i))
+(defn pack-int-be    ^bytes [i] (IOUtils/packIntBe i))
+(defn pack-long-be   ^bytes [i] (IOUtils/packLongBe i))
+(defn pack-float-be  ^bytes [f] (IOUtils/packFloatBe f))
+(defn pack-double-be ^bytes [f] (IOUtils/packDoubleBe f))
 
-(defn pack-short-le  [^long i]   (let [b (byte-array 2)] (-> b (ByteBuffer/wrap 0 2) (.order ByteOrder/LITTLE_ENDIAN) (.putShort 0 i)) b))
-(defn pack-int-le    [^long i]   (let [b (byte-array 4)] (-> b (ByteBuffer/wrap 0 4) (.order ByteOrder/LITTLE_ENDIAN) (.putInt 0 i)) b))
-(defn pack-long-le   [^long i]   (let [b (byte-array 8)] (-> b (ByteBuffer/wrap 0 8) (.order ByteOrder/LITTLE_ENDIAN) (.putLong 0 i)) b))
-(defn pack-float-le  [^double f] (let [b (byte-array 4)] (-> b (ByteBuffer/wrap 0 4) (.order ByteOrder/LITTLE_ENDIAN) (.putFloat 0 f)) b))
-(defn pack-double-le [^double f] (let [b (byte-array 8)] (-> b (ByteBuffer/wrap 0 8) (.order ByteOrder/LITTLE_ENDIAN) (.putDouble 0 f)) b))
+(defn pack-short-le  ^bytes [i] (IOUtils/packShortLe i))
+(defn pack-int-le    ^bytes [i] (IOUtils/packIntLe i))
+(defn pack-long-le   ^bytes [i] (IOUtils/packLongLe i))
+(defn pack-float-le  ^bytes [f] (IOUtils/packFloatLe f))
+(defn pack-double-le ^bytes [f] (IOUtils/packDoubleLe f))
 
 (defrecord NumberStruct [^long len unpack-fn pack-fn]
   Struct
@@ -416,38 +367,22 @@
 (def st-float-le  (->NumberStruct 4 unpack-float-le pack-float-le))
 (def st-double-le (->NumberStruct 8 unpack-double-le pack-double-le))
 
-^:rct/test
-(comment
-  (seq (pack st-int-le 1)) ; => [1 0 0 0]
-  (seq (pack st-int-be 1)) ; => [0 0 0 1]
-  (unpack st-int-le (byte-array [1 0 0 0])) ; => 1
-  (unpack st-int-be (byte-array [1 0 0 0])) ; => 16777216
-  (unpack-many st-short-be (byte-array [1 0 0 0])) ; => [256 0]
-  )
-
 ;;;; unsigned int
 
-(defn unpack-ushort-be [^bytes b] (-> b unpack-short-be (bit-and 0xffff)))
-(defn unpack-ushort-le [^bytes b] (-> b unpack-short-le (bit-and 0xffff)))
-(defn unpack-uint-be   [^bytes b] (-> b unpack-int-be (bit-and 0xffffffff)))
-(defn unpack-uint-le   [^bytes b] (-> b unpack-int-le (bit-and 0xffffffff)))
+(defn unpack-ushort-be [b] (IOUtils/unpackUshortBe b))
+(defn unpack-ushort-le [b] (IOUtils/unpackUshortLe b))
+(defn unpack-uint-be   [b] (IOUtils/unpackUintBe b))
+(defn unpack-uint-le   [b] (IOUtils/unpackUintLe b))
 
-(defn pack-ushort-be [^long i] (-> i unchecked-short pack-short-be))
-(defn pack-ushort-le [^long i] (-> i unchecked-short pack-short-le))
-(defn pack-uint-be   [^long i] (-> i unchecked-int pack-int-be))
-(defn pack-uint-le   [^long i] (-> i unchecked-int pack-int-le))
+(defn pack-ushort-be ^bytes [i] (IOUtils/packUshortBe i))
+(defn pack-ushort-le ^bytes [i] (IOUtils/packUshortLe i))
+(defn pack-uint-be   ^bytes [i] (IOUtils/packUintBe i))
+(defn pack-uint-le   ^bytes [i] (IOUtils/packUintLe i))
 
 (def st-ushort-be (->NumberStruct 2 unpack-ushort-be pack-ushort-be))
 (def st-ushort-le (->NumberStruct 2 unpack-ushort-le pack-ushort-le))
 (def st-uint-be   (->NumberStruct 4 unpack-uint-be pack-uint-be))
 (def st-uint-le   (->NumberStruct 4 unpack-uint-le pack-uint-le))
-
-^:rct/test
-(comment
-  (seq (pack st-ushort-be 65535)) ; => [-1 -1]
-  (seq (pack st-ushort-le 0xff00)) ; => [0 -1]
-  (unpack st-ushort-be (byte-array [-1 -1])) ; => 65535
-  )
 
 ;;; string
 
@@ -455,12 +390,6 @@
   "Wrap bytes struct to string struct."
   [st-bytes]
   (-> st-bytes (wrap b/bytes->str b/str->bytes)))
-
-^:rct/test
-(comment
-  (seq (pack (wrap-str (->st-bytes 5)) "hello")) ; => [104 101 108 108 111]
-  (unpack (wrap-str (->st-bytes 5)) (.getBytes "hello")) ; => "hello"
-  )
 
 (defn ->st-line
   "Construct line struct."
@@ -470,99 +399,37 @@
 (def st-unix-line (->st-line "\n"))
 (def st-http-line (->st-line "\r\n"))
 
-^:rct/test
-(comment
-  (seq (pack st-http-line "hello")) ; => [104 101 108 108 111 13 10]
-  (unpack st-http-line (.getBytes "hello\r\n")) ; => "hello"
-  )
-
 ;;; io utils
 
 (defn read-fn->input-stream
-  "Convert read fn to input stream.
-  read-fn:
-  - not eof: return non-empty bytes.
-  - eof: return empty bytes or nil."
+  "Convert read fn to input stream."
   ^InputStream [read-fn & [close-fn]]
-  (let [vbuf (volatile! (ByteBuffer/allocate 0))
-        ensure-data-fn (fn []
-                         (let [remain (.remaining ^ByteBuffer @vbuf)]
-                           (if-not (zero? remain)
-                             remain
-                             (do
-                               (when-let [ba (read-fn)]
-                                 (vreset! vbuf (ByteBuffer/wrap (bytes ba))))
-                               (.remaining ^ByteBuffer @vbuf)))))
-        read-byte-fn (fn []
-                       (if (zero? (ensure-data-fn))
-                         -1
-                         (bit-and 0xff (.get ^ByteBuffer @vbuf))))
-        fill-bytes-fn (fn [b off len]
-                        (let [remain (ensure-data-fn)]
-                          (if (zero? remain)
-                            -1
-                            (let [n (min remain len)]
-                              (.get ^ByteBuffer @vbuf (bytes b) (int off) (int n))
-                              n))))]
-    (proxy [InputStream] []
-      (read
-        ([] (read-byte-fn))
-        ([b] (fill-bytes-fn b 0 (b/length b)))
-        ([b off len] (fill-bytes-fn b off len)))
-      (close []
-        (when (some? close-fn)
-          (close-fn))))))
-
-^:rct/test
-(comment
-  (seq (read-struct (->st-bytes 5) (read-fn->input-stream #(byte-array [1 2 3 4])))) ; => [1 2 3 4 1]
-  )
+  (FnInputStream. read-fn close-fn))
 
 (defn write-fn->output-stream
   "Convert write fn to output stream."
   ^OutputStream [write-fn & [close-fn]]
-  (proxy [OutputStream] []
-    (write
-      ([b] (let [b (if (bytes? b) b (byte-array [b]))]
-             (when-not (zero? (b/length b))
-               (write-fn b))))
-      ([b off len] (let [b (b/copy-of-range b off (+ off len))]
-                     (when-not (zero? (b/length b))
-                       (write-fn b)))))
-    (close []
-      (when (some? close-fn)
-        (close-fn)))))
+  (FnOutputStream. write-fn close-fn))
+
+(defn read-fn->buffered-input-stream
+  "Convert read fn to buffered input stream."
+  ^InputStream [read-fn & [close-fn]]
+  (BufferedInputStream. (read-fn->input-stream read-fn close-fn)))
+
+(defn write-fn->buffered-output-stream
+  "Convert write fn to buffered output stream."
+  ^OutputStream [write-fn & [close-fn]]
+  (BufferedOutputStream. (write-fn->output-stream write-fn close-fn)))
 
 (defn input-stream-with-close-fn
   "Return new input stream with custom close fn."
   ^InputStream [^InputStream is close-fn]
-  (proxy [InputStream] []
-    (available [] (.available is))
-    (markSupported [] (.markSupported is))
-    (mark [limit] (.mark is limit))
-    (reset [] (.reset is))
-    (skip [n] (.skip is n))
-    (skipNBytes [n] (.skipNBytes is n))
-    (read
-      ([] (.read is))
-      ([b] (.read is b))
-      ([b off len] (.read is b off len)))
-    (readNBytes
-      ([n] (.readNBytes is n))
-      ([b off len] (.readNBytes is b off len)))
-    (readAllBytes [] (.readAllBytes is))
-    (transferTo [os] (.transferTo is os))
-    (close [] (close-fn))))
+  (FilterCloseInputStream. is close-fn))
 
 (defn output-stream-with-close-fn
   "Return new output stream with custom close fn."
   ^OutputStream [^OutputStream os close-fn]
-  (proxy [OutputStream] []
-    (write
-      ([b] (if (bytes? b) (.write os (bytes b)) (.write os (int b))))
-      ([b off len] (.write os (bytes b) (int off) (int len))))
-    (flush [] (.flush os))
-    (close [] (close-fn))))
+  (FilterCloseOutputStream. os close-fn))
 
 (defn mk-closeable
   "Construct closeable object."

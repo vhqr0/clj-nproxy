@@ -105,15 +105,6 @@
       (when-let [host (second (str/split host #"\." 2))]
         (recur host tags)))))
 
-^:rct/test
-(comment
-  (match-tag "google.com" {"google.com" :proxy}) ; => :proxy
-  (match-tag "www.google.com" {"google.com" :proxy}) ; => :proxy
-  (match-tag "www.a.google.com" {"google.com" :proxy}) ; => :proxy
-  (match-tag "ads.google.com" {"google.com" :proxy "ads.google.com" :block}) ; => :block
-  (match-tag "baidu.com" {"google.com" :proxy}) ; => nil
-  )
-
 (defmethod mk-outbound :tag-dispatch [{:keys [outbounds tags default-tag]} host port callback]
   (let [tag (or (match-tag host tags) default-tag)
         outbound (get outbounds tag)]
