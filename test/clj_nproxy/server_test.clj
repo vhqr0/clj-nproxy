@@ -8,3 +8,8 @@
   (is (= :proxy (server/match-tag "www.a.google.com" {"google.com" :proxy})))
   (is (= :block (server/match-tag "ads.google.com" {"google.com" :proxy "ads.google.com" :block})))
   (is (= nil (server/match-tag "baidu.com" {"google.com" :proxy}))))
+
+(deftest thread-test
+  (is (= {:type :test/log :inbound {:type :test/tag :inbound {:type :test/proxy}}}
+         (-> {:type :thread :inbounds [{:type :test/proxy} {:type :test/tag} {:type :test/log}]}
+             server/edn->inbound-opts))))

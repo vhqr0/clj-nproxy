@@ -6,7 +6,7 @@
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto :as crypto]
-            [clj-nproxy.proxy :as proxy])
+            [clj-nproxy.net :as net])
   (:import [java.util.zip CRC32]
            [java.io InputStream OutputStream ByteArrayInputStream]
            [java.security MessageDigest]
@@ -436,24 +436,26 @@
                    (st/close os))]
     (st/write-fn->buffered-output-stream write-fn close-fn)))
 
-(defmethod proxy/mk-client :vmess [server {:keys [id] :as opts} host port callback]
+(defmethod net/mk-proxy-client :vmess [server {:keys [id] :as opts} host port callback]
   (let [{is :input-stream os :output-stream} server
         {:keys [key iv rkey riv] :as params} (->params opts)
         pre-read-fn #(read-resp is params)
         pre-write-fn #(st/write os (->ereq id params host port))]
-    (callback {:input-stream (wrap-input-stream is params rkey riv pre-read-fn)
-               :output-stream (wrap-output-stream os params key iv pre-write-fn)})))
+    (callback (assoc server
+                     :input-stream (wrap-input-stream is params rkey riv pre-read-fn)
+                     :output-stream (wrap-output-stream os params key iv pre-write-fn)))))
 
-(defmethod proxy/mk-server :vmess [client {:keys [id]} callback]
+(defmethod net/mk-proxy-server :vmess [client {:keys [id]} callback]
   (let [{is :input-stream os :output-stream} client
         [host port {:keys [key iv rkey riv] :as params} _eaid] (read-req is id)
         pre-write-fn #(st/write os (->eresp params))]
-    (callback {:input-stream (wrap-input-stream is params key iv)
-               :output-stream (wrap-output-stream os params rkey riv pre-write-fn)
-               :host host :port port})))
+    (callback (assoc client
+                     :input-stream (wrap-input-stream is params key iv)
+                     :output-stream (wrap-output-stream os params rkey riv pre-write-fn)
+                     :host host :port port))))
 
-(defmethod proxy/edn->client-opts :vmess [{:keys [uuid] :as opts}]
+(defmethod net/edn->proxy-client-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))
 
-(defmethod proxy/edn->server-opts :vmess [{:keys [uuid] :as opts}]
+(defmethod net/edn->proxy-server-opts :vmess [{:keys [uuid] :as opts}]
   (assoc opts :id (->id uuid)))

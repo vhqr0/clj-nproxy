@@ -15,19 +15,9 @@
              :proxy-opts {:type :socks5}}
    :outbound {:type :direct}})
 
-(defn start-server-from-config
-  "Start proxy server from config."
-  [{:keys [config-name] :or {config-name "config.edn"} :as opts}]
-  (let [server-opts (merge default-server-opts (config/read-edn opts config-name))]
-    (server/start-server
-     (merge
-      (server/edn->server-opts server-opts)
-      {:log-fn tap>}))))
-
 (defn start-server
   "Start proxy server."
-  [{:keys [pr-log?] :or {pr-log? true} :as opts}]
-  (when pr-log?
-    (add-tap prn))
-  (start-server-from-config opts)
+  [{:keys [config-name] :or {config-name "config.edn"} :as opts}]
+  (let [server-opts (merge default-server-opts (config/read-edn opts config-name))]
+    (-> server-opts server/edn->server-opts server/start-server))
   @(promise))

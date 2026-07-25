@@ -25,28 +25,21 @@
     (.getOutputStream socket)
     #(.shutdownOutput socket))))
 
-(defn socket->peer
-  "Convert socket to peer info."
-  [^Socket socket]
-  (let [^InetSocketAddress addr (.getRemoteSocketAddress socket)]
-    {:host (.getHostString addr)
-     :port (.getPort addr)}))
-
 (defn socket->stream
   "Convert socket to stream."
   [^Socket socket]
-  {:socket socket
-   :peer (socket->peer socket)
-   :input-stream (socket->input-stream socket)
-   :output-stream (socket->output-stream socket)})
+  (let [^InetSocketAddress addr (.getRemoteSocketAddress socket)]
+    {:tcp/socket socket
+     :tcp/host (.getHostString addr)
+     :tcp/port (.getPort addr)
+     :input-stream (socket->input-stream socket)
+     :output-stream (socket->output-stream socket)}))
 
 (defn socket-callback
   "Convert socket to stream, then invoke callback fn."
   [^Socket socket callback]
-  (try
-    (callback (socket->stream socket))
-    (finally
-      (st/safe-close socket))))
+  (with-open [socket socket]
+    (callback (socket->stream socket))))
 
 (defn start-server-socket
   "Start server socket."
@@ -78,7 +71,7 @@
         (.setSSLParameters socket params)))
     socket))
 
-(defmethod net/mk-client :tcp [opts callback]
+(defmethod net/mk-net-client :tcp [opts callback]
   (let [{:keys [host port ssl? ssl-params]} opts
         ^Socket socket (if ssl?
                          (mk-ssl-socket host port ssl-params)
@@ -105,7 +98,7 @@
         (.setSSLParameters server params)))
     server))
 
-(defmethod net/mk-server :tcp [opts callback]
+(defmethod net/mk-net-server :tcp [opts callback]
   (let [{:keys [host port ssl? ssl-params] :or {host "localhost"}} opts
         ^ServerSocket server (if ssl?
                                (mk-ssl-server-socket host port ssl-params)

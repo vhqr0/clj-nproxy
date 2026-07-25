@@ -38,7 +38,7 @@
                 (fn [server]
                   (tls13/mk-client
                    server {:trust-store trust-store :server-names ["test.local"] :application-protocols ["http/2" "http/1.1"]}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (assert (= (select-keys @acontext [:stage :cipher-suite :named-group :accept-server-name? :application-protocol])
                                 {:stage :connected
                                  :cipher-suite tls13/cipher-suite-tls-aes-128-gcm-sha256
@@ -50,7 +50,7 @@
                 (fn [client]
                   (tls13/mk-server
                    client {:key-store key-store :application-protocols ["http/1.1"]}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (assert (= (select-keys @acontext [:stage :cipher-suite :named-group :server-names :application-protocol])
                                 {:stage :connected
                                  :cipher-suite tls13/cipher-suite-tls-aes-128-gcm-sha256
@@ -64,7 +64,7 @@
                 (fn [server]
                   (tls13/mk-client
                    server {:trust-store trust-store :named-groups [tls13/named-group-secp256r1]}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (assert (= (select-keys @acontext [:stage :named-group])
                                 {:stage :connected :named-group tls13/named-group-secp256r1}))
                      (st/close os)
@@ -72,7 +72,7 @@
                 (fn [client]
                   (tls13/mk-server
                    client {:key-store key-store}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (assert (= (select-keys @acontext [:stage :named-group])
                                 {:stage :connected :named-group tls13/named-group-secp256r1}))
                      (st/close os)
@@ -82,7 +82,7 @@
                 (fn [server]
                   (tls13/mk-client
                    server {:trust-store trust-store :key-store key-store}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (assert (= (select-keys @acontext [:stage :client-auth?])
                                 {:stage :connected :client-auth? true}))
                      (st/close os)
@@ -90,7 +90,7 @@
                 (fn [client]
                   (tls13/mk-server
                    client {:client-auth? true :trust-store trust-store :key-store key-store}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (assert (= (select-keys @acontext [:stage])
                                 {:stage :connected}))
                      (st/close os)
@@ -121,7 +121,7 @@
                 (fn [server]
                   (tls13/mk-client
                    server {:trust-store trust-store}
-                   (fn [{:keys [acontext] is :input-stream os :output-stream}]
+                   (fn [{acontext :tls13/acontext is :input-stream os :output-stream}]
                      (let [data1 (b/rand 32)
                            data2 (b/rand 32)]
                        (st/write os data1)

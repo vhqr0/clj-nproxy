@@ -4,7 +4,7 @@
   (:require [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto :as crypto]
-            [clj-nproxy.proxy :as proxy])
+            [clj-nproxy.net :as net])
   (:import [java.net InetAddress]))
 
 (set! clojure.core/*warn-on-reflection* true)
@@ -111,7 +111,7 @@
     req
     (throw (ex-info "invalid cmd" {:reason ::invalid-cmd :cmd cmd}))))
 
-(defmethod proxy/mk-client :socks5 [server opts host port callback]
+(defmethod net/mk-proxy-client :socks5 [server opts host port callback]
   (let [{is :input-stream os :output-stream} server]
     ;; auth
     (let [{:keys [auth]} opts
@@ -132,9 +132,9 @@
     (st/write-struct st-socks5-req os {:ver 5 :cmd 1 :rsv 0 :addr {:atype 3 :host host :port port}})
     (st/flush os)
     (-> (st/read-struct st-socks5-resp is) valid-socks5-ver valid-socks5-status)
-    (callback {:input-stream is :output-stream os})))
+    (callback server)))
 
-(defmethod proxy/mk-server :socks5 [client opts callback]
+(defmethod net/mk-proxy-server :socks5 [client opts callback]
   (let [{is :input-stream os :output-stream} client]
     ;; auth
     (let [{:keys [auth]} opts
@@ -157,7 +157,7 @@
           {:keys [host port]} addr]
       (st/write-struct st-socks5-resp os {:ver 5 :status 0 :rsv 0 :addr {:atype 1 :host "0.0.0.0" :port 0}})
       (st/flush os)
-      (callback {:input-stream is :output-stream os :host host :port port}))))
+      (callback (assoc client :host host :port port)))))
 
 ;;; trojan
 
@@ -168,11 +168,11 @@
    :addr st-addr
    :rsv st/st-http-line))
 
-(defmethod proxy/mk-client :trojan [server {:keys [auth]} host port callback]
+(defmethod net/mk-proxy-client :trojan [server {:keys [auth]} host port callback]
   (let [{is :input-stream os :output-stream} server]
     (st/write-struct st-trojan-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
     (st/flush os)
-    (callback {:input-stream is :output-stream os})))
+    (callback server)))
 
 (defn valid-trojan-auth
   "Valid request auth."
@@ -188,14 +188,14 @@
     req
     (throw (ex-info "addr surplus" {:reason ::addr-surplus}))))
 
-(defmethod proxy/mk-server :trojan [client {:keys [auth]} callback]
+(defmethod net/mk-proxy-server :trojan [client {:keys [auth]} callback]
   (let [{is :input-stream os :output-stream} client
         {:keys [addr]} (-> (st/read-struct st-trojan-req is)
                            (valid-trojan-auth auth)
                            valid-socks5-cmd
                            valid-trojan-rsv)
         {:keys [host port]} addr]
-    (callback {:input-stream is :output-stream os :host host :port port})))
+    (callback (assoc client :host host :port port))))
 
 (defn trojan-auth
   "Get trojan auth."
@@ -207,5 +207,5 @@
   [{:keys [password] :as opts}]
   (assoc opts :auth (trojan-auth password)))
 
-(defmethod proxy/edn->client-opts :trojan [opts] (edn->trojan-opts opts))
-(defmethod proxy/edn->server-opts :trojan [opts] (edn->trojan-opts opts))
+(defmethod net/edn->proxy-client-opts :trojan [opts] (edn->trojan-opts opts))
+(defmethod net/edn->proxy-server-opts :trojan [opts] (edn->trojan-opts opts))

@@ -275,26 +275,29 @@
          (websocket-builder-apply-timeout opts)
          (.buildAsync (as-uri uri) listener)))))
 
-(defmethod net/mk-client :ws [{:keys [client uri] :as opts} callback]
+(defn queue->read-fn
+  [^BlockingQueue queue]
+  (fn []
+    (let [^QueuedWebSocketListener$Message message (.take queue)
+          data (.data message)]
+      (when (some? data)
+        (let [data (cond-> data (string? data) b/str->bytes)]
+          (if (zero? (b/length data))
+            (recur)
+            data))))))
+
+(defmethod net/mk-net-client :ws [{:keys [client uri] :as opts} callback]
   (let [^BlockingQueue queue (LinkedBlockingQueue. 4096)
         ^WebSocket$Listener listener (QueuedWebSocketListener. queue)
         ^HttpClient client (force client)
         ^WebSocket websocket @(websocket-connect client (assoc opts :listener listener))
-        read-fn (fn []
-                  (let [^QueuedWebSocketListener$Message message (.take queue)
-                        data (.data message)]
-                    (when (some? data)
-                      (let [data (cond-> data (string? data) b/str->bytes)]
-                        (if (zero? (b/length data))
-                          (recur)
-                          data)))))
-        write-fn (fn [b]
-                   @(.sendBinary websocket (ByteBuffer/wrap (bytes b)) true))
-        close-fn (fn []
-                   @(.sendClose websocket WebSocket/NORMAL_CLOSURE ""))]
-    (with-open [is (st/read-fn->buffered-input-stream read-fn)
-                os (st/write-fn->buffered-output-stream write-fn close-fn)]
-      (callback {:websocket websocket :uri uri :input-stream is :output-stream os}))))
+        read-fn (queue->read-fn queue)
+        write-fn (fn [b] @(.sendBinary websocket (ByteBuffer/wrap (bytes b)) true))
+        close-fn (fn [] @(.sendClose websocket WebSocket/NORMAL_CLOSURE ""))]
+    (with-open [_ (st/mk-closeable close-fn)]
+      (callback {:ws/websocket websocket :ws/uri uri
+                 :input-stream (st/read-fn->buffered-input-stream read-fn)
+                 :output-stream (st/write-fn->buffered-output-stream write-fn close-fn)}))))
 
-(defmethod net/edn->client-opts :ws [opts]
+(defmethod net/edn->net-client-opts :ws [opts]
   (assoc opts :client (delay (->client opts))))

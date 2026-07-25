@@ -24,16 +24,11 @@
     (Channels/newOutputStream sc)
     #(.shutdownOutput sc))))
 
-(defn socket-channel->peer
-  "Convert socket channel to peer info."
-  [^SocketChannel sc]
-  {:path (str (.getRemoteAddress sc))})
-
 (defn socket-channel->stream
   "Convert socket channel to stream."
   [^SocketChannel sc]
-  {:socket-channel sc
-   :peer (socket-channel->peer sc)
+  {:unix/socket-channel sc
+   :unix/path (str (.getRemoteAddress sc))
    :input-stream (socket-channel->input-stream sc)
    :output-stream (socket-channel->output-stream sc)})
 
@@ -53,13 +48,13 @@
          #(socket-channel-callback sc callback))
         (recur)))))
 
-(defmethod net/mk-client :unix [opts callback]
+(defmethod net/mk-net-client :unix [opts callback]
   (let [{:keys [^String path]} opts
         ^SocketChannel sc (SocketChannel/open StandardProtocolFamily/UNIX)]
     (.connect sc (UnixDomainSocketAddress/of path))
     (socket-channel-callback sc callback)))
 
-(defmethod net/mk-server :unix [opts callback]
+(defmethod net/mk-net-server :unix [opts callback]
   (let [{:keys [^String path]} opts
         ^ServerSocketChannel server (ServerSocketChannel/open StandardProtocolFamily/UNIX)]
     (.bind server (UnixDomainSocketAddress/of path))

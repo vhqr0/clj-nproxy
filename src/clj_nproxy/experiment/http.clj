@@ -4,8 +4,7 @@
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.crypto :as crypto]
-            [clj-nproxy.net :as net]
-            [clj-nproxy.proxy :as proxy])
+            [clj-nproxy.net :as net])
   (:import [java.util.concurrent.locks ReentrantLock]
            [java.io InputStream OutputStream ByteArrayInputStream SequenceInputStream]))
 
@@ -136,16 +135,16 @@
         (throw (ex-info "invalid upgrade" {:reason ::invalid-upgrade :upgrade upgrade})))
       (throw (ex-info "invalid connection" {:reason ::invalid-connection :connection connection})))))
 
-(defmethod proxy/mk-client :http [server {:keys [headers]} host port callback]
+(defmethod net/mk-proxy-client :http [server {:keys [headers]} host port callback]
   (let [{is :input-stream os :output-stream} server
         hostport (pack-hostport host port)
         headers (merge {"host" hostport} headers)]
     (st/write-struct st-http-req os {:method "CONNECT" :path hostport :headers headers})
     (st/flush os)
     (let [resp (-> (st/read-struct st-http-resp is) valid-version (valid-status "200"))]
-      (callback {:http-resp resp :input-stream is :output-stream os}))))
+      (callback (assoc server :http/resp resp)))))
 
-(defmethod proxy/mk-server :http [client _opts callback]
+(defmethod net/mk-proxy-server :http [client _opts callback]
   (let [{is :input-stream os :output-stream} client
         {:keys [method] :as req} (-> (st/read-struct st-http-req is) valid-version)]
     (if (= "connect" (str/lower-case method))
@@ -154,7 +153,7 @@
             [host port] (unpack-hostport path)]
         (st/write-struct st-http-resp os {:headers {"connection" "close"}})
         (st/flush os)
-        (callback {:http-req req :input-stream is :output-stream os :host host :port (or port 443)}))
+        (callback (assoc client :http/req req :host host :port (or port 443))))
       ;; get, post, ...
       (let [{:keys [headers]} req
             [host port] (or (some-> (get headers "host") unpack-hostport)
@@ -168,7 +167,7 @@
             req-bytes (st/pack st-http-req (assoc req :headers headers))
             req-is (ByteArrayInputStream. req-bytes)
             is (SequenceInputStream. req-is is)]
-        (callback {:http-req req :input-stream is :output-stream os :host host :port (or port 80)})))))
+        (callback (assoc client :input-stream is :http/req req :host host :port (or port 80)))))))
 
 ;;; websocket
 
@@ -378,43 +377,20 @@
      (when-not (zero? (b/length b))
        (write-fn {:op 2 :fin? true :data b})))))
 
-(defn websocket->stream
-  "Convert websocket to stream."
-  [websocket]
-  {:websocket websocket
-   :input-stream (websocket->input-stream websocket)
-   :output-stream (websocket->output-stream websocket)})
-
-(defn mk-websocket-client
-  "Make websocket client."
-  [server opts callback]
+(defmethod net/mk-wrap-client :ws [server opts callback]
   (mk-client-websocket
    server opts
-   (fn [server]
-     (callback (websocket->stream server)))))
+   (fn [websocket]
+     (callback (assoc server
+                      :ws/websocket websocket
+                      :input-stream (websocket->input-stream websocket)
+                      :output-stream (websocket->output-stream websocket))))))
 
-(defn mk-websocket-server
-  "Make websocket server."
-  [client opts callback]
+(defmethod net/mk-wrap-server :ws [client opts callback]
   (mk-server-websocket
    client opts
-   (fn [client]
-     (callback (websocket->stream client)))))
-
-#_(defmethod net/mk-client :ws [opts callback]
-    (net/mk-client
-     (assoc opts :type :tcp)
-     (fn [tcp-server]
-       (mk-websocket-client
-        tcp-server opts
-        (fn [ws-server]
-          (callback (merge tcp-server ws-server)))))))
-
-#_(defmethod net/mk-server :ws [opts callback]
-    (net/mk-server
-     (assoc opts :type :tcp)
-     (fn [tcp-client]
-       (mk-websocket-server
-        tcp-client opts
-        (fn [ws-client]
-          (callback (merge tcp-client ws-client)))))))
+   (fn [websocket]
+     (callback (assoc client
+                      :ws/websocket websocket
+                      :input-stream (websocket->input-stream websocket)
+                      :output-stream (websocket->output-stream websocket))))))

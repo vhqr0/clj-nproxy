@@ -2,7 +2,7 @@
   (:require [clojure.test :refer [deftest is]]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
-            [clj-nproxy.proxy :as proxy]
+            [clj-nproxy.net :as net]
             [clj-nproxy.experiment.http :as http]))
 
 (deftest header-struct-test
@@ -36,25 +36,25 @@
 (deftest http-test
   (is (some? (st/sim-conn
               (fn [server]
-                (proxy/mk-client server {:type :http} "example.com" 80 (fn [_])))
+                (net/mk-proxy-client server {:type :http} "example.com" 80 (fn [_])))
               (fn [client]
-                (proxy/mk-server client {:type :http} (fn [_])))))))
+                (net/mk-proxy-server client {:type :http} (fn [_])))))))
 
 (deftest ws-test
   (is (some? (st/sim-conn
               (fn [server]
-                (http/mk-websocket-client
-                 server nil
+                (net/mk-wrap-client
+                 server {:type :ws}
                  (fn [server]
-                   (proxy/mk-client
+                   (net/mk-proxy-client
                     server {:type :http} "example.com" 80
                     (fn [{is :input-stream}]
                       (st/read-bytes is 1))))))
               (fn [client]
-                (http/mk-websocket-server
-                 client nil
+                (net/mk-wrap-server
+                 client {:type :ws}
                  (fn [client]
-                   (proxy/mk-server
+                   (net/mk-proxy-server
                     client {:type :http}
                     (fn [{os :output-stream}]
                       (st/write os (b/rand 1))

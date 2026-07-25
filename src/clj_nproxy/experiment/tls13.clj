@@ -1895,9 +1895,10 @@
   [{is :input-stream os :output-stream :as stream} context callback]
   (let [context (handshake stream context)
         acontext (atom context)]
-    (with-open [is (wrap-input-stream is acontext)
-                os (wrap-output-stream os acontext)]
-      (callback {:acontext acontext :input-stream is :output-stream os}))))
+    (callback (assoc stream
+                     :tls13/acontext acontext
+                     :input-stream (wrap-input-stream is acontext)
+                     :output-stream (wrap-output-stream os acontext)))))
 
 (defn mk-client
   "Make tls13 client."

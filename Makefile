@@ -6,13 +6,9 @@ test:
 compile:
 	clojure -T:build compile
 
-.PHONY: run-cli
-run-cli:
+.PHONY: run
+run:
 	clojure -X:prop-http-host clj-nproxy.cli/start-server
-
-.PHONY: run-gui
-run-gui:
-	clojure -X:prop-http-host clj-nproxy.gui/start-server
 
 .PHONY: dlc-gen
 dlc-gen:

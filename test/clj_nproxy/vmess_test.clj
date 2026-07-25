@@ -2,7 +2,7 @@
   (:require [clojure.test :refer [deftest is]]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
-            [clj-nproxy.proxy :as proxy]
+            [clj-nproxy.net :as net]
             [clj-nproxy.vmess :as vmess]))
 
 (deftest checksum-test
@@ -23,9 +23,9 @@
   (let [uuid (str (random-uuid))]
     (st/sim-conn
      (fn [server]
-       (proxy/mk-client
+       (net/mk-proxy-client
         server
-        (proxy/edn->client-opts (merge {:type :vmess :uuid uuid} opts))
+        (net/edn->proxy-client-opts (merge {:type :vmess :uuid uuid} opts))
         "example.com" 80
         (fn [{is :input-stream os :output-stream}]
           (st/write os (b/rand 4))
@@ -34,9 +34,9 @@
           (st/close os)
           (st/read-eof is))))
      (fn [client]
-       (proxy/mk-server
+       (net/mk-proxy-server
         client
-        (proxy/edn->server-opts {:type :vmess :uuid uuid})
+        (net/edn->proxy-server-opts {:type :vmess :uuid uuid})
         (fn [{is :input-stream os :output-stream}]
           (let [b (st/read-bytes is 4)]
             (st/write os b)
