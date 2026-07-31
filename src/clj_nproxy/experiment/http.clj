@@ -268,7 +268,7 @@
                        (finally
                          (.unlock lock)))))
         close-fn (fn []
-                   (write-fn {:op 8 :fin? true :data (st/pack-ushort-be 1000)}))
+                   (write-fn {:op 8 :fin? true :data (st/pack st/st-ushort-be 1000)}))
         ping-fn (fn [data]
                   (write-fn {:op 9 :fin? true :data data}))
         read-fn (fn []

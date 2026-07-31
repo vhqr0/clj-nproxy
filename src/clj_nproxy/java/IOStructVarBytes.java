@@ -5,15 +5,15 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public final class IOStructVarBytes implements IIOStruct<byte[]> {
-  private final IIOStruct<Long> lengthStruct;
+  private final IIOStruct<Number> lengthStruct;
 
-  public IOStructVarBytes(IIOStruct<Long> lengthStruct) {
+  public IOStructVarBytes(IIOStruct<Number> lengthStruct) {
     this.lengthStruct = lengthStruct;
   }
 
   @Override
   public byte[] read(InputStream is) throws IOException {
-    int length = Math.toIntExact(lengthStruct.read(is));
+    int length = Math.toIntExact(lengthStruct.read(is).longValue());
     byte[] data = is.readNBytes(length);
     if (data.length != length) throw new IOStructEOFException();
     return data;

@@ -4,7 +4,11 @@
   (:require [clj-nproxy.bytes :as b])
   (:import [java.util.concurrent StructuredTaskScope StructuredTaskScope$Joiner]
            [java.io Closeable InputStream OutputStream ByteArrayInputStream ByteArrayOutputStream BufferedInputStream BufferedOutputStream PipedInputStream PipedOutputStream]
-           [clj_nproxy.java IOUtils FnInputStream FnOutputStream FilterCloseInputStream FilterCloseOutputStream]))
+           [clj_nproxy.java IIOStruct
+            IOStructNull IOStructByte IOStructUByte
+            IOStructShort IOStructInteger IOStructLong IOStructFloat IOStructDouble
+            IOStructUint IOStructBytes IOStructVarBytes IOStructDelimitedBytes
+            FnInputStream FnOutputStream FilterCloseInputStream FilterCloseOutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -60,6 +64,8 @@
   [^Closeable o]
   (try (.close o) (catch Exception _)))
 
+;;; struct
+
 (defprotocol Struct
   "Struct protocol: read/write structure data
   from input stream / to output stream."
@@ -99,12 +105,56 @@
       (write-struct st os data))
     (.toByteArray os)))
 
-(defrecord NullStruct []
-  Struct
-  (read-struct [_ _is])
-  (write-struct [_ _os _data]))
+;;; primitives
 
-(def st-null (->NullStruct))
+(extend-protocol Struct
+  IIOStruct
+  (read-struct [^IIOStruct this is] (.read this is))
+  (write-struct [^IIOStruct this os data] (.write this os data)))
+
+(def st-null (IOStructNull.))
+
+;;;; byte
+
+(def st-byte  (IOStructByte.))
+(def st-ubyte (IOStructUByte.))
+
+;;;; number
+
+(def st-short-be  (IOStructShort. true))
+(def st-short-le  (IOStructShort. false))
+(def st-int-be    (IOStructInteger. true))
+(def st-int-le    (IOStructInteger. false))
+(def st-long-be   (IOStructLong. true))
+(def st-long-le   (IOStructLong. false))
+(def st-float-be  (IOStructFloat. true))
+(def st-float-le  (IOStructFloat. false))
+(def st-double-be (IOStructDouble. true))
+(def st-double-le (IOStructDouble. false))
+
+;;;; unsigned int
+
+(def st-ushort-be (IOStructUint. st-short-be 0xffff))
+(def st-ushort-le (IOStructUint. st-short-le 0xffff))
+(def st-uint-be   (IOStructUint. st-int-be 0xffffffff))
+(def st-uint-le   (IOStructUint. st-int-le 0xffffffff))
+
+;;;; bytes
+
+(defn ->st-bytes
+  "Construct bytes struct."
+  [len]
+  (IOStructBytes. (int len)))
+
+(defn ->st-var-bytes
+  "Construct var bytes struct."
+  [st-len]
+  (IOStructVarBytes. st-len))
+
+(defn ->st-delimited-bytes
+  "Construct delimited bytes struct."
+  [delim]
+  (IOStructDelimitedBytes. delim))
 
 ;;; combinators
 
@@ -252,137 +302,6 @@
   "Construct var coll struct."
   [st-len st]
   (->VarCollStruct st-len st))
-
-;;; bytes
-
-(defrecord BytesStruct [^long len]
-  Struct
-  (read-struct [_ is] (read-bytes is len))
-  (write-struct [_ os data]
-    (if (= len (b/length data))
-      (write os data)
-      (throw (ex-info "invalid length" {:reason ::invalid-length})))))
-
-(defn ->st-bytes
-  "Construct bytes struct."
-  [len]
-  (->BytesStruct len))
-
-(defrecord VarBytesStruct [st-len]
-  Struct
-  (read-struct [_ is]
-    (let [len (read-struct st-len is)]
-      (read-bytes is len)))
-  (write-struct [_ os data]
-    (write-struct st-len os (b/length data))
-    (write os data)))
-
-(defn ->st-var-bytes
-  "Construct var bytes struct."
-  [st-len]
-  (->VarBytesStruct st-len))
-
-(defn read-delimited-bytes
-  "Read delimited bytes from stream."
-  ^bytes [^InputStream is ^bytes delim]
-  (let [len (b/length delim)
-        os (ByteArrayOutputStream.)]
-    (loop [^bytes pb (read-bytes is len)]
-      (if (zero? (b/compare pb delim))
-        (.toByteArray os)
-        (do
-          (.write os (aget pb 0))
-          (let [npb (byte-array len)]
-            (System/arraycopy pb 1 npb 0 (dec len))
-            (aset npb (dec len) (unchecked-byte (.read is)))
-            (recur npb)))))))
-
-(defrecord DelimitedBytesStruct [^bytes delim]
-  Struct
-  (read-struct [_ is] (read-delimited-bytes is delim))
-  (write-struct [_ os data] (write os data) (write os delim)))
-
-(defn ->st-delimited-bytes
-  "Construct delimited bytes struct."
-  [delim]
-  (->DelimitedBytesStruct delim))
-
-;;; number
-
-;;;; byte
-
-(defrecord ByteStruct []
-  Struct
-  (read-struct [_ is] (read-byte is))
-  (write-struct [_ os i] (.write ^OutputStream os (byte i))))
-
-(defrecord UByteStruct []
-  Struct
-  (read-struct [_ is] (read-ubyte is))
-  (write-struct [_ os i] (.write ^OutputStream os (unchecked-byte i))))
-
-(def st-byte (->ByteStruct))
-(def st-ubyte (->UByteStruct))
-
-;;;; number
-
-(defn unpack-short-be  [b] (IOUtils/unpackShortBe b))
-(defn unpack-int-be    [b] (IOUtils/unpackIntBe b))
-(defn unpack-long-be   [b] (IOUtils/unpackLongBe b))
-(defn unpack-float-be  [b] (IOUtils/unpackFloatBe b))
-(defn unpack-double-be [b] (IOUtils/unpackDoubleBe b))
-
-(defn unpack-short-le  [b] (IOUtils/unpackShortLe b))
-(defn unpack-int-le    [b] (IOUtils/unpackIntLe b))
-(defn unpack-long-le   [b] (IOUtils/unpackLongLe b))
-(defn unpack-float-le  [b] (IOUtils/unpackFloatLe b))
-(defn unpack-double-le [b] (IOUtils/unpackDoubleLe b))
-
-(defn pack-short-be  ^bytes [i] (IOUtils/packShortBe i))
-(defn pack-int-be    ^bytes [i] (IOUtils/packIntBe i))
-(defn pack-long-be   ^bytes [i] (IOUtils/packLongBe i))
-(defn pack-float-be  ^bytes [f] (IOUtils/packFloatBe f))
-(defn pack-double-be ^bytes [f] (IOUtils/packDoubleBe f))
-
-(defn pack-short-le  ^bytes [i] (IOUtils/packShortLe i))
-(defn pack-int-le    ^bytes [i] (IOUtils/packIntLe i))
-(defn pack-long-le   ^bytes [i] (IOUtils/packLongLe i))
-(defn pack-float-le  ^bytes [f] (IOUtils/packFloatLe f))
-(defn pack-double-le ^bytes [f] (IOUtils/packDoubleLe f))
-
-(defrecord NumberStruct [^long len unpack-fn pack-fn]
-  Struct
-  (read-struct [_ is] (unpack-fn (read-bytes is len)))
-  (write-struct [_ os n] (write os (pack-fn n))))
-
-(def st-short-be  (->NumberStruct 2 unpack-short-be pack-short-be))
-(def st-int-be    (->NumberStruct 4 unpack-int-be pack-int-be))
-(def st-long-be   (->NumberStruct 8 unpack-long-be pack-long-be))
-(def st-float-be  (->NumberStruct 4 unpack-float-be pack-float-be))
-(def st-double-be (->NumberStruct 8 unpack-double-be pack-double-be))
-
-(def st-short-le  (->NumberStruct 2 unpack-short-le pack-short-le))
-(def st-int-le    (->NumberStruct 4 unpack-int-le pack-int-le))
-(def st-long-le   (->NumberStruct 8 unpack-long-le pack-long-le))
-(def st-float-le  (->NumberStruct 4 unpack-float-le pack-float-le))
-(def st-double-le (->NumberStruct 8 unpack-double-le pack-double-le))
-
-;;;; unsigned int
-
-(defn unpack-ushort-be [b] (IOUtils/unpackUshortBe b))
-(defn unpack-ushort-le [b] (IOUtils/unpackUshortLe b))
-(defn unpack-uint-be   [b] (IOUtils/unpackUintBe b))
-(defn unpack-uint-le   [b] (IOUtils/unpackUintLe b))
-
-(defn pack-ushort-be ^bytes [i] (IOUtils/packUshortBe i))
-(defn pack-ushort-le ^bytes [i] (IOUtils/packUshortLe i))
-(defn pack-uint-be   ^bytes [i] (IOUtils/packUintBe i))
-(defn pack-uint-le   ^bytes [i] (IOUtils/packUintLe i))
-
-(def st-ushort-be (->NumberStruct 2 unpack-ushort-be pack-ushort-be))
-(def st-ushort-le (->NumberStruct 2 unpack-ushort-le pack-ushort-le))
-(def st-uint-be   (->NumberStruct 4 unpack-uint-be pack-uint-be))
-(def st-uint-le   (->NumberStruct 4 unpack-uint-le pack-uint-le))
 
 ;;; string
 

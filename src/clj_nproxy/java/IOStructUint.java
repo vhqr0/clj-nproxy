@@ -4,22 +4,22 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-public final class IOStructUint implements IIOStruct<Long> {
-  private final IIOStruct<Long> intStruct;
+public final class IOStructUint implements IIOStruct<Number> {
+  private final IIOStruct<Number> intStruct;
   private final long mask;
 
-  public IOStructUint(IIOStruct<Long> intStruct, long mask) {
+  public IOStructUint(IIOStruct<Number> intStruct, long mask) {
     this.intStruct = intStruct;
     this.mask = mask;
   }
 
   @Override
-  public Long read(InputStream is) throws IOException {
-    return intStruct.read(is) & mask;
+  public Number read(InputStream is) throws IOException {
+    return intStruct.read(is).longValue() & mask;
   }
 
   @Override
-  public void write(OutputStream os, Long data) throws IOException {
+  public void write(OutputStream os, Number data) throws IOException {
     intStruct.write(os, data);
   }
 }

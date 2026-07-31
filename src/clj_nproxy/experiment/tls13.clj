@@ -8,7 +8,8 @@
             [clj-nproxy.crypto.ecformat :as ecf]
             [clj-nproxy.crypto.keystore :as ks])
   (:import [java.io InputStream OutputStream]
-           [java.security PrivateKey PublicKey]))
+           [java.security PrivateKey PublicKey]
+           [clj_nproxy.java IIOStruct]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -28,10 +29,11 @@
 ;;; struct
 
 (def st-uint24
-  (-> (st/->st-bytes 3)
-      (st/wrap
-       #(st/unpack st/st-uint-be (b/right-align % 4))
-       #(b/copy-of-range (st/pack st/st-uint-be %) 1 4))))
+  (reify IIOStruct
+    (read [_ is]
+      (st/unpack st/st-uint-be (b/right-align (st/read-bytes is 3) 4)))
+    (write [_ os data]
+      (st/write os (b/copy-of-range (st/pack st/st-uint-be data) 1 4)))))
 
 ;;;; const
 
@@ -626,7 +628,7 @@
   "Get seqneuced iv."
   [cryptor]
   (let [{:keys [sequence iv]} cryptor]
-    (doto (b/right-align (st/pack-long-be sequence) (b/length iv))
+    (doto (b/right-align (st/pack st/st-long-be sequence) (b/length iv))
       (mask-bytes-inplace iv))))
 
 (defn encrypt

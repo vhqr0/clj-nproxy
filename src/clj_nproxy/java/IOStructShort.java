@@ -6,7 +6,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public final class IOStructShort implements IIOStruct<Long> {
+public final class IOStructShort implements IIOStruct<Number> {
   private final ByteOrder order;
 
   public IOStructShort(boolean isBigEndian) {
@@ -14,7 +14,7 @@ public final class IOStructShort implements IIOStruct<Long> {
   }
 
   @Override
-  public Long read(InputStream is) throws IOException {
+  public Number read(InputStream is) throws IOException {
     byte[] data = is.readNBytes(2);
     if (data.length != 2) throw new IOStructEOFException();
     short dataShort = ByteBuffer.wrap(data).order(order).getShort(0);
@@ -22,7 +22,7 @@ public final class IOStructShort implements IIOStruct<Long> {
   }
 
   @Override
-  public void write(OutputStream os, Long data) throws IOException {
+  public void write(OutputStream os, Number data) throws IOException {
     byte[] dataBytes = ByteBuffer.allocate(2).order(order).putShort(data.shortValue()).array();
     os.write(dataBytes);
   }

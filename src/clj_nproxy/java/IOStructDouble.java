@@ -6,7 +6,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public final class IOStructDouble implements IIOStruct<Double> {
+public final class IOStructDouble implements IIOStruct<Number> {
   private final ByteOrder order;
 
   public IOStructDouble(boolean isBigEndian) {
@@ -14,7 +14,7 @@ public final class IOStructDouble implements IIOStruct<Double> {
   }
 
   @Override
-  public Double read(InputStream is) throws IOException {
+  public Number read(InputStream is) throws IOException {
     byte[] data = is.readNBytes(8);
     if (data.length != 8) throw new IOStructEOFException();
     double dataDouble = ByteBuffer.wrap(data).order(order).getDouble(0);
@@ -22,7 +22,7 @@ public final class IOStructDouble implements IIOStruct<Double> {
   }
 
   @Override
-  public void write(OutputStream os, Double data) throws IOException {
+  public void write(OutputStream os, Number data) throws IOException {
     byte[] dataBytes = ByteBuffer.allocate(8).order(order).putDouble(data.doubleValue()).array();
     os.write(dataBytes);
   }

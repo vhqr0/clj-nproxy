@@ -210,7 +210,7 @@
         req+padding+fnv1a (b/cat req+padding (fnv1a req+padding))
         elen (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
-                   b (st/pack-ushort-be (b/length req+padding+fnv1a))]
+                   b (st/pack st/st-ushort-be (b/length req+padding+fnv1a))]
                (crypto/aesgcm-encrypt key iv b eaid))
         ereq (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                    iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
@@ -285,7 +285,7 @@
         len (let [key (vkdf :req-len-key 16 cmd-key [eaid nonce])
                   iv (vkdf :req-len-iv 12 cmd-key [eaid nonce])
                   b (crypto/aesgcm-decrypt key iv elen eaid)]
-              (st/unpack-ushort-be b))
+              (st/unpack st/st-ushort-be b))
         ereq (st/read-bytes is (+ 16 len))
         req+padding+fnv1a (-> (let [key (vkdf :req-key 16 cmd-key [eaid nonce])
                                     iv (vkdf :req-iv 12 cmd-key [eaid nonce])]
@@ -323,7 +323,7 @@
                 (crypto/aesgcm-encrypt key iv resp))
         elen (let [key (vkdf :resp-len-key 16 rkey)
                    iv (vkdf :resp-len-iv 12 riv)
-                   b (st/pack-ushort-be (b/length resp))]
+                   b (st/pack st/st-ushort-be (b/length resp))]
                (crypto/aesgcm-encrypt key iv b))]
     (b/cat elen eresp)))
 
@@ -335,7 +335,7 @@
         len (let [key (vkdf :resp-len-key 16 rkey)
                   iv (vkdf :resp-len-iv 12 riv)
                   b (crypto/aesgcm-decrypt key iv elen)]
-              (st/unpack-ushort-be b))
+              (st/unpack st/st-ushort-be b))
         eresp (st/read-bytes is (+ 16 len))
         resp (let [key (vkdf :resp-key 16 rkey)
                    iv (vkdf :resp-iv 12 riv)
@@ -378,7 +378,7 @@
   [iv]
   (let [read-fn (shake128-read-fn iv)]
     (fn []
-      (st/unpack-ushort-be (read-fn 2)))))
+      (st/unpack st/st-ushort-be (read-fn 2)))))
 
 (defn iv->read-iv-fn
   "Convert base iv to read iv fn."
@@ -388,7 +388,7 @@
     (fn []
       (let [i @vctr]
         (vswap! vctr inc)
-        (b/cat (st/pack-ushort-be i) iv)))))
+        (b/cat (st/pack st/st-ushort-be i) iv)))))
 
 (defn wrap-input-stream
   "Wrap vmess over input stream."
@@ -425,7 +425,7 @@
                                iv (read-iv-fn)
                                edata (sec-encrypt sec key iv data)
                                len (+ plen (b/length edata))
-                               elen (st/pack-ushort-be (bit-xor mask len))]
+                               elen (st/pack st/st-ushort-be (bit-xor mask len))]
                            (st/write os (b/cat elen edata (b/rand plen)))
                            (st/flush os)))
         write-fn (fn [data]
