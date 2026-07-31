@@ -1,0 +1,29 @@
+package clj_nproxy.java;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+public final class IOStructShort implements IIOStruct<Long> {
+  private final ByteOrder order;
+
+  public IOStructShort(boolean isBigEndian) {
+    order = isBigEndian ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN;
+  }
+
+  @Override
+  public Long read(InputStream is) throws IOException {
+    byte[] data = is.readNBytes(2);
+    if (data.length != 2) throw new IOStructEOFException();
+    short dataShort = ByteBuffer.wrap(data).order(order).getShort(0);
+    return Long.valueOf(dataShort);
+  }
+
+  @Override
+  public void write(OutputStream os, Long data) throws IOException {
+    byte[] dataBytes = ByteBuffer.allocate(2).order(order).putShort(data.shortValue()).array();
+    os.write(dataBytes);
+  }
+}
