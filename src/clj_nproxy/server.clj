@@ -2,7 +2,8 @@
   "Proxy server."
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
-            [clj-nproxy.net :as net]))
+            [clj-nproxy.net :as net])
+  (:import [java.util.logging Logger Level]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -122,27 +123,20 @@
 
 ;;; log
 
-(defmulti log
-  (fn [opts _client] (:log-type opts)))
+(def logger (delay (Logger/getLogger "nproxy")))
 
 (def log-keys [:host :port :tag])
 
 (defn ->log
   [opts client]
-  (let [log-keys (get opts :log-keys log-keys)]
-    (select-keys client log-keys)))
-
-(defmethod log :prn [opts client]
-  (prn (->log opts client)))
-
-(defmethod log :tap [opts client]
-  (tap> (->log opts client)))
+  (select-keys client (get opts :log-keys log-keys)))
 
 (defmethod mk-inbound :log [{:keys [inbound] :as opts} callback]
   (mk-inbound
    inbound
    (fn [client]
-     (log opts client)
+     (let [log (->log opts client)]
+       (.log ^Logger (force logger) Level/INFO (str log)))
      (callback client))))
 
 (defmethod edn->inbound-opts :log [opts]
@@ -158,11 +152,9 @@
 (defmethod catch-error :throw [_opts _client error]
   (throw error))
 
-(defmethod catch-error :log-str [opts client error]
-  (log opts (assoc client :error-str (str error))))
-
-(defmethod catch-error :log-pr-str [opts client error]
-  (log opts (assoc client :error-pr-str (pr-str error))))
+(defmethod catch-error :log [opts client error]
+  (let [log (-> (->log opts client) (assoc :error (str error)))]
+    (.log ^Logger (force logger) Level/FINE (str log) ^Throwable error)))
 
 (defmethod mk-inbound :catch [{:keys [inbound] :as opts} callback]
   (mk-inbound

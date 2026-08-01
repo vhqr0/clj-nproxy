@@ -8,7 +8,10 @@ compile:
 
 .PHONY: run
 run:
-	clojure -X:prop-http-host clj-nproxy.cli/start-server
+	clojure \
+		-J-Djdk.httpclient.allowRestrictedHeaders=host \
+		-J-Djava.util.logging.config.file=.nproxy/logging.properties \
+		-X clj-nproxy.cli/start-server
 
 .PHONY: dlc-gen
 dlc-gen:

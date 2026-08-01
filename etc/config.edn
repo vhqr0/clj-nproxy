@@ -1,0 +1,17 @@
+{:inbound {:type :thread
+           :inbounds [{:type :proxy
+                       :net-opts {:type :tcp :port 1080}
+                       :proxy-opts {:type :socks5}}
+                      {:type :tag
+                       :tags #file "tags.edn"
+                       :default-tag :direct}
+                      {:type :log}
+                      {:type :catch
+                       :catch-type :log}]}
+ :outbound {:type :thread
+            :outbounds [{:type :tag-dispatch
+                         :outbounds {:direct {:type :direct}
+                                     :block {:type :block}
+                                     :proxy #file "sub.edn"}}
+                        {:type :catch
+                         :catch-type :log}]}}
