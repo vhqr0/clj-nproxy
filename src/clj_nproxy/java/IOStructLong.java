@@ -15,8 +15,7 @@ public final class IOStructLong implements IIOStruct<Number> {
 
   @Override
   public Number read(InputStream is) throws IOException {
-    byte[] data = is.readNBytes(8);
-    if (data.length != 8) throw new IOStructEOFException();
+    byte[] data = IIOStruct.readNBytes(is, 8);
     long dataLong = ByteBuffer.wrap(data).order(order).getLong(0);
     return Long.valueOf(dataLong);
   }

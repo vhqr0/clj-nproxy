@@ -15,8 +15,7 @@ public final class IOStructInteger implements IIOStruct<Number> {
 
   @Override
   public Number read(InputStream is) throws IOException {
-    byte[] data = is.readNBytes(4);
-    if (data.length != 4) throw new IOStructEOFException();
+    byte[] data = IIOStruct.readNBytes(is, 4);
     int dataInt = ByteBuffer.wrap(data).order(order).getInt(0);
     return Long.valueOf(dataInt);
   }

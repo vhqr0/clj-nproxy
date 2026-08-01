@@ -13,9 +13,7 @@ public final class IOStructBytes implements IIOStruct<byte[]> {
 
   @Override
   public byte[] read(InputStream is) throws IOException {
-    byte[] data = is.readNBytes(length);
-    if (data.length != length) throw new IOStructEOFException();
-    return data;
+    return IIOStruct.readNBytes(is, length);
   }
 
   @Override

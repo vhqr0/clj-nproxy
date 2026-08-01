@@ -15,8 +15,7 @@ public final class IOStructShort implements IIOStruct<Number> {
 
   @Override
   public Number read(InputStream is) throws IOException {
-    byte[] data = is.readNBytes(2);
-    if (data.length != 2) throw new IOStructEOFException();
+    byte[] data = IIOStruct.readNBytes(is, 2);
     short dataShort = ByteBuffer.wrap(data).order(order).getShort(0);
     return Long.valueOf(dataShort);
   }

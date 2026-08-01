@@ -165,7 +165,7 @@
 (defn read-bytes
   "Read n bytes from stream."
   ^bytes [^InputStream is ^long len]
-  (read-struct (->st-bytes len) is))
+  (IIOStruct/readNBytes is (int len)))
 
 (defn read-eof
   "Read eof."

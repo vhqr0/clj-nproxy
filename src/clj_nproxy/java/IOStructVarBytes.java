@@ -14,9 +14,7 @@ public final class IOStructVarBytes implements IIOStruct<byte[]> {
   @Override
   public byte[] read(InputStream is) throws IOException {
     int length = Math.toIntExact(lengthStruct.read(is).longValue());
-    byte[] data = is.readNBytes(length);
-    if (data.length != length) throw new IOStructEOFException();
-    return data;
+    return IIOStruct.readNBytes(is, length);
   }
 
   @Override
