@@ -168,12 +168,6 @@
    :addr st-addr
    :rsv st/st-http-line))
 
-(defmethod net/mk-proxy-client :trojan [server {:keys [auth]} host port callback]
-  (let [{is :input-stream os :output-stream} server]
-    (st/write-struct st-trojan-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
-    (st/flush os)
-    (callback server)))
-
 (defn valid-trojan-auth
   "Valid request auth."
   [{req-auth :auth :as req} auth]
@@ -188,12 +182,15 @@
     req
     (throw (ex-info "addr surplus" {:reason ::addr-surplus}))))
 
+(defmethod net/mk-proxy-client :trojan [server {:keys [auth]} host port callback]
+  (let [{is :input-stream os :output-stream} server]
+    (st/write-struct st-trojan-req os {:auth auth :cmd 1 :addr {:atype 3 :host host :port port} :rsv ""})
+    (st/flush os)
+    (callback server)))
+
 (defmethod net/mk-proxy-server :trojan [client {:keys [auth]} callback]
   (let [{is :input-stream os :output-stream} client
-        {:keys [addr]} (-> (st/read-struct st-trojan-req is)
-                           (valid-trojan-auth auth)
-                           valid-socks5-cmd
-                           valid-trojan-rsv)
+        {:keys [addr]} (-> (st/read-struct st-trojan-req is) (valid-trojan-auth auth) valid-socks5-cmd valid-trojan-rsv)
         {:keys [host port]} addr]
     (callback (assoc client :host host :port port))))
 
