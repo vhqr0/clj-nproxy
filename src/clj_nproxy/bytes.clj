@@ -1,63 +1,63 @@
 (ns clj-nproxy.bytes
   "Bytes utils."
   (:refer-clojure :exclude [compare cat reverse rand])
-  (:import [clj_nproxy.java IOUtils]))
+  (:import [clj_nproxy.java BytesUtils]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
 (defn length
-  ^long [b] (IOUtils/length b))
+  ^long [b] (BytesUtils/length b))
 
 (defn copy
   [s s-from d d-from n]
-  (IOUtils/copy s s-from d d-from n))
+  (BytesUtils/copy s s-from d d-from n))
 
 (defn copy-of
-  (^bytes [b] (IOUtils/copyOf b))
-  (^bytes [b n] (IOUtils/copyOf b n)))
+  (^bytes [b] (BytesUtils/copyOf b))
+  (^bytes [b n] (BytesUtils/copyOf b n)))
 
 (defn copy-of-range
-  ^bytes [b from to] (IOUtils/copyOfRange b from to))
+  ^bytes [b from to] (BytesUtils/copyOfRange b from to))
 
 (defn compare
-  (^Long [b1 b2] (IOUtils/compare b1 b2))
-  (^Long [b1 b1-from b1-to b2 b2-from b2-to] (IOUtils/compare b1 b1-from b1-to b2 b2-from b2-to)))
+  (^Long [b1 b2] (BytesUtils/compare b1 b2))
+  (^Long [b1 b1-from b1-to b2 b2-from b2-to] (BytesUtils/compare b1 b1-from b1-to b2 b2-from b2-to)))
 
 (defn fill
-  ([b i] (IOUtils/fill b i))
-  ([b from to i] (IOUtils/fill b from to i)))
+  ([b i] (BytesUtils/fill b i))
+  ([b from to i] (BytesUtils/fill b from to i)))
 
 (defn cat
-  ^bytes [& bs] (IOUtils/cat (object-array bs)))
+  ^bytes [& bs] (BytesUtils/cat (object-array bs)))
 
 ;; convert between uint-be/le
-(defn reverse ^bytes [b] (IOUtils/reverse b))
+(defn reverse ^bytes [b] (BytesUtils/reverse b))
 
 ;; format var-len uint-le
 (defn left-align
-  ^bytes [b n] (IOUtils/leftAlign b n))
+  ^bytes [b n] (BytesUtils/leftAlign b n))
 
 ;; format var-len uint-be
 (defn right-align
-  ^bytes [b n] (IOUtils/rightAlign b n))
+  ^bytes [b n] (BytesUtils/rightAlign b n))
 
 (defn rand
-  ^bytes [n] (IOUtils/rand n))
+  ^bytes [n] (BytesUtils/rand n))
 
 (defn str->bytes
-  ^bytes [s] (IOUtils/strToBytes s))
+  ^bytes [s] (BytesUtils/strToBytes s))
 
 (defn bytes->str
-  ^String [b] (IOUtils/bytesToStr b))
+  ^String [b] (BytesUtils/bytesToStr b))
 
 (defn hex->bytes
-  ^bytes [s] (IOUtils/hexToBytes s))
+  ^bytes [s] (BytesUtils/hexToBytes s))
 
 (defn bytes->hex
-  ^String [b] (IOUtils/bytesToHex b))
+  ^String [b] (BytesUtils/bytesToHex b))
 
 (defn base64->bytes
-  ^bytes [s] (IOUtils/base64ToBytes s))
+  ^bytes [s] (BytesUtils/base64ToBytes s))
 
 (defn bytes->base64
-  ^String [b] (IOUtils/bytesToBase64 b))
+  ^String [b] (BytesUtils/bytesToBase64 b))

@@ -6,9 +6,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Random;
 
-public final class IOUtils {
-  private IOUtils() {}
-
+public final class BytesUtils {
   private static final Random RANDOM = new SecureRandom();
 
   public static int length(byte[] b) {
@@ -111,5 +109,4 @@ public final class IOUtils {
   public static String bytesToBase64(byte[] b) {
     return Base64.getEncoder().encodeToString(b);
   }
-
 }

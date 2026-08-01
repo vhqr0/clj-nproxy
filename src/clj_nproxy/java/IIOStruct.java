@@ -13,12 +13,6 @@ public interface IIOStruct<T> {
 
   public void write(OutputStream os, T data) throws IOException;
 
-  static byte[] readNBytes(InputStream is, int n) throws IOException {
-    byte[] data = is.readNBytes(n);
-    if (data.length != n) throw new IOStructEOFException();
-    return data;
-  }
-
   default T unpack(byte[] b) throws IOException {
     ByteArrayInputStream bais = new ByteArrayInputStream(b);
     T data = read(bais);
@@ -43,5 +37,11 @@ public interface IIOStruct<T> {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     for (T subData : data) write(baos, subData);
     return baos.toByteArray();
+  }
+
+  static byte[] readNBytes(InputStream is, int n) throws IOException {
+    byte[] data = is.readNBytes(n);
+    if (data.length != n) throw new IOStructEOFException();
+    return data;
   }
 }
