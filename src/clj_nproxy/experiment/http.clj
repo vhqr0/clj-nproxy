@@ -135,6 +135,8 @@
         (throw (ex-info "invalid upgrade" {:reason ::invalid-upgrade :upgrade upgrade})))
       (throw (ex-info "invalid connection" {:reason ::invalid-connection :connection connection})))))
 
+;;; proxy
+
 (defmethod net/mk-proxy-client :http [server {:keys [headers]} host port callback]
   (let [{is :input-stream os :output-stream} server
         hostport (pack-hostport host port)
@@ -185,68 +187,46 @@
 
 ;;;; frame
 
-(defn read-fin-op
-  "Read op from stream."
+(defn read-websocket-frame
+  "Read frame from stream."
   [is]
   (let [fin-op (st/read-struct st/st-ubyte is)
-        fin (bit-and 0x80 fin-op)
+        fin? (not (zero? (bit-and 0x80 fin-op)))
         op (bit-and 0x7f fin-op)
-        fin? (not (zero? fin))]
-    [fin? op]))
-
-(defn write-fin-op
-  "Write op to stream."
-  [os fin? op]
-  (st/write-struct st/st-ubyte os (+ op (if fin? 128 0))))
-
-(defn read-mask-len
-  "Read length from stream."
-  [is]
-  (let [mask-len (st/read-struct st/st-ubyte is)
-        mask (bit-and 0x80 mask-len)
+        mask-len (st/read-struct st/st-ubyte is)
+        mask? (not (zero? (bit-and 0x80 mask-len)))
         len (bit-and 0x7f mask-len)
-        mask? (not (zero? mask))
         len (case len
               126 (st/read-struct st/st-ushort-be is)
               127 (st/read-struct st-fake-ulong-be is)
-              len)]
-    [mask? len]))
-
-(defn write-mask-len
-  "Write length to stream."
-  [os mask? len]
-  (cond
-    (< len 126)
-    (st/write-struct st/st-ubyte os (+ len (if mask? 128 0)))
-    (< len 65536)
-    (do
-      (st/write-struct st/st-ubyte os (+ 126 (if mask? 128 0)))
-      (st/write-struct st/st-ushort-be os len))
-    :else
-    (do
-      (st/write-struct st/st-ubyte os (+ 127 (if mask? 128 0)))
-      (st/write-struct st/st-long-be os len))))
-
-(defn read-frame
-  "Read frame from stream."
-  [is]
-  (let [[fin? op] (read-fin-op is)
-        [mask? len] (read-mask-len is)
+              len)
         mask (when mask? (st/read-bytes is 4))
         data (st/read-bytes is len)]
-    (when (some? mask)
+    (when mask?
       (mask-data-inplace data mask))
     {:op op :fin? fin? :mask mask :data data}))
 
-(defn write-frame
+(defn write-websocket-frame
   "Write frame to stream."
   [os {:keys [op fin? mask data]}]
-  (write-fin-op os fin? op)
-  (write-mask-len os (some? mask) (b/length data))
-  (when (some? mask)
-    (st/write os mask)
-    (mask-data-inplace data mask))
-  (st/write os data))
+  (let [mask? (some? mask)
+        len (b/length data)]
+    (st/write-struct st/st-ubyte os (+ op (if fin? 128 0)))
+    (cond
+      (>= 65536)
+      (do
+        (st/write-struct st/st-ubyte os (+ 127 (if mask? 128 0)))
+        (st/write-struct st/st-long-be os len))
+      (>= 126)
+      (do
+        (st/write-struct st/st-ubyte os (+ 126 (if mask? 128 0)))
+        (st/write-struct st/st-ushort-be os len))
+      :else
+      (st/write-struct st/st-ubyte os (+ len (if mask? 128 0))))
+    (when mask?
+      (st/write os mask)
+      (mask-data-inplace data mask))
+    (st/write os data)))
 
 (defn mk-websocket
   "Make websocket."
@@ -263,7 +243,7 @@
                        (when-not @vwclose?
                          (when (= op 8)
                            (vreset! vwclose? true))
-                         (write-frame os (merge frame {:mask (when mask? (b/rand 4))}))
+                         (write-websocket-frame os (merge frame {:mask (when mask? (b/rand 4))}))
                          (st/flush os))
                        (finally
                          (.unlock lock)))))
@@ -274,7 +254,7 @@
         read-fn (fn []
                   (when-not @vrclose?
                     (loop []
-                      (let [{:keys [op fin? data] :as frame} (read-frame is)]
+                      (let [{:keys [op fin? data] :as frame} (read-websocket-frame is)]
                         (case (long op)
                           ;; close
                           8 (do
@@ -301,13 +281,7 @@
                    :ping-fn ping-fn
                    :read-fn read-fn
                    :wait-closed-fn wait-closed-fn}]
-    (try
-      (callback websocket)
-      (finally
-        (close-fn)
-        (wait-closed-fn)
-        (st/close is)
-        (st/close os)))))
+    (callback websocket)))
 
 ;;;; handshake
 
