@@ -159,7 +159,7 @@
       ;; get, post, ...
       (let [{:keys [headers]} req
             [host port] (or (some-> (get headers "host") unpack-hostport)
-                            (ex-info "no hostport" {:reason ::no-hostport}))
+                            (throw (ex-info "no hostport" {:reason ::no-hostport})))
             ;; remove proxy- headers
             headers (->> headers
                          (remove
@@ -213,11 +213,11 @@
         len (b/length data)]
     (st/write-struct st/st-ubyte os (+ op (if fin? 128 0)))
     (cond
-      (>= 65536)
+      (>= len 65536)
       (do
         (st/write-struct st/st-ubyte os (+ 127 (if mask? 128 0)))
         (st/write-struct st/st-long-be os len))
-      (>= 126)
+      (>= len 126)
       (do
         (st/write-struct st/st-ubyte os (+ 126 (if mask? 128 0)))
         (st/write-struct st/st-ushort-be os len))
