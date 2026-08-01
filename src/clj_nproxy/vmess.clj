@@ -9,8 +9,7 @@
             [clj-nproxy.net :as net])
   (:import [java.util.zip CRC32]
            [java.io InputStream OutputStream ByteArrayInputStream]
-           [java.security MessageDigest]
-           [clj_nproxy.java Shake128 Fnv1a]))
+           [clj_nproxy.java Shake128 Fnv1a IVMessDigest VMessDigestSHA256 VMessDigestRecur]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -44,58 +43,12 @@
 
 ;;;; kdf
 
-(defprotocol VmessDigest
-  "Abstraction for clonable vmess digest function."
-  (vd-clone [this])
-  (vd-update! [this b])
-  (^bytes vd-digest! [this b]))
-
-(defrecord SHA256VmessDigest [^MessageDigest md]
-  VmessDigest
-  (vd-clone [_]
-    (->SHA256VmessDigest (.clone md)))
-  (vd-update! [_ b]
-    (.update md (bytes b)))
-  (vd-digest! [_ b]
-    (.digest md (bytes b))))
-
-(defrecord RecurVmessDigest [inner-vd outer-vd]
-  VmessDigest
-  (vd-clone [_]
-    (->RecurVmessDigest (vd-clone inner-vd) (vd-clone outer-vd)))
-  (vd-update! [_ b]
-    (vd-update! inner-vd b))
-  (vd-digest! [_ b]
-    (vd-digest! outer-vd (vd-digest! inner-vd b))))
-
-(defn ->sha256-vd
-  "Construct SHA256 vmess digest state."
-  []
-  (->SHA256VmessDigest (MessageDigest/getInstance "SHA-256")))
-
-(defn hmac-expand-key
-  "Expand key in HMAC format."
-  [^bytes key]
-  (let [ikey (byte-array 64)
-        okey (byte-array 64)]
-    (b/fill ikey 0x36)
-    (b/fill okey 0x5c)
-    (dotimes [i (alength key)]
-      (let [b (aget key i)]
-        (aset ikey i (unchecked-byte (bit-xor b 0x36)))
-        (aset okey i (unchecked-byte (bit-xor b 0x5c)))))
-    [ikey okey]))
-
 (defn ->recur-vd
-  "Construct recur vmess digest state,
-  based on a digest state and key."
-  ([key]
-   (->recur-vd (->sha256-vd) key))
-  ([vd key]
-   (let [[ikey okey] (hmac-expand-key key)
-         inner-vd (doto (vd-clone vd) (vd-update! ikey))
-         outer-vd (doto (vd-clone vd) (vd-update! okey))]
-     (->RecurVmessDigest inner-vd outer-vd))))
+  "Construct recur vmess digest."
+  (^IVMessDigest [^bytes key]
+   (->recur-vd (VMessDigestSHA256.) key))
+  (^IVMessDigest [^IVMessDigest vd ^bytes key]
+   (VMessDigestRecur. vd key)))
 
 (def vkdf-label
   "VMess AEAD KDF")
@@ -123,9 +76,9 @@
 (defn vkdf
   "Vmess key derive fn."
   ^bytes [type len b & [aads]]
-  (let [base-vd (vd-clone (get vkdf-vds type))
-        vd (reduce ->recur-vd base-vd aads)]
-    (b/copy-of (vd-digest! vd b) len)))
+  (let [^IVMessDigest base-vd (.copy ^IVMessDigest (get vkdf-vds type))
+        ^IVMessDigest vd (reduce ->recur-vd base-vd aads)]
+    (b/copy-of (.digest vd b) len)))
 
 ;;;; req
 
