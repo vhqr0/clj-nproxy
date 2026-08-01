@@ -233,16 +233,16 @@
   [stream mask? callback]
   (let [{is :input-stream os :output-stream} stream
         ^ReentrantLock lock (ReentrantLock.)
-        vwclose? (volatile! false)
-        vrclose? (volatile! false)
-        close?-fn (fn [] (or @vrclose? @vwclose?))
+        awclose? (atom false)
+        arclose? (atom false)
+        close?-fn (fn [] (or @arclose? @awclose?))
         write-fn (fn [{:keys [op] :as frame}]
-                   (when-not @vwclose?
+                   (when-not @awclose?
                      (try
                        (.lock lock)
-                       (when-not @vwclose?
+                       (when-not @awclose?
                          (when (= op 8)
-                           (vreset! vwclose? true))
+                           (reset! awclose? true))
                          (write-websocket-frame os (merge frame {:mask (when mask? (b/rand 4))}))
                          (st/flush os))
                        (finally
@@ -252,13 +252,13 @@
         ping-fn (fn [data]
                   (write-fn {:op 9 :fin? true :data data}))
         read-fn (fn []
-                  (when-not @vrclose?
+                  (when-not @arclose?
                     (loop []
                       (let [{:keys [op fin? data] :as frame} (read-websocket-frame is)]
                         (case (long op)
                           ;; close
                           8 (do
-                              (vreset! vrclose? true)
+                              (reset! arclose? true)
                               (close-fn))
                           ;; ping
                           9 (do
@@ -271,7 +271,7 @@
                           (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))))
         wait-closed-fn (fn []
                          (loop []
-                           (when-not @vrclose?
+                           (when-not @arclose?
                              (read-fn)
                              (recur))))
         websocket {:stream stream
