@@ -8,8 +8,7 @@
             [clj-nproxy.crypto.ecformat :as ecf]
             [clj-nproxy.crypto.keystore :as ks])
   (:import [java.io InputStream OutputStream]
-           [java.security PrivateKey PublicKey]
-           [clj_nproxy.java IIOStruct]))
+           [java.security PrivateKey PublicKey]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -29,11 +28,10 @@
 ;;; struct
 
 (def st-uint24
-  (reify IIOStruct
-    (read [_ is]
-      (st/unpack st/st-uint-be (b/right-align (st/read-bytes is 3) 4)))
-    (write [_ os data]
-      (st/write os (b/copy-of-range (st/pack st/st-uint-be data) 1 4)))))
+  (-> (st/->st-bytes 3)
+      (st/wrap
+       #(st/unpack st/st-uint-be (b/right-align % 4))
+       #(b/copy-of-range (st/pack st/st-uint-be %) 1 4))))
 
 ;;;; const
 

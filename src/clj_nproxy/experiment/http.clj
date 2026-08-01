@@ -188,7 +188,7 @@
 (defn read-fin-op
   "Read op from stream."
   [is]
-  (let [fin-op (st/read-ubyte is)
+  (let [fin-op (st/read-struct st/st-ubyte is)
         fin (bit-and 0x80 fin-op)
         op (bit-and 0x7f fin-op)
         fin? (not (zero? fin))]
@@ -202,7 +202,7 @@
 (defn read-mask-len
   "Read length from stream."
   [is]
-  (let [mask-len (st/read-ubyte is)
+  (let [mask-len (st/read-struct st/st-ubyte is)
         mask (bit-and 0x80 mask-len)
         len (bit-and 0x7f mask-len)
         mask? (not (zero? mask))
