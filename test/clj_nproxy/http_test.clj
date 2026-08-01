@@ -1,9 +1,9 @@
-(ns clj-nproxy.experiment.http-test
+(ns clj-nproxy.http-test
   (:require [clojure.test :refer [deftest is]]
             [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net]
-            [clj-nproxy.experiment.http :as http]))
+            [clj-nproxy.http :as http]))
 
 (deftest header-struct-test
   (is (= ["GET / HTTP/1.1" {"host" "example.com" "connection" "open"}]

@@ -3,6 +3,7 @@
   (:require [clj-nproxy.server :as server]
             [clj-nproxy.config :as config]
             clj-nproxy.tcp
+            clj-nproxy.httpclient
             clj-nproxy.http
             clj-nproxy.socks5
             clj-nproxy.vmess))
