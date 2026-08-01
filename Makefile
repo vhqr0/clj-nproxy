@@ -6,6 +6,10 @@ test:
 compile:
 	clojure -T:build compile
 
+.PHONY: clean
+compile:
+	clojure -T:build clean
+
 .PHONY: run
 run:
 	clojure \
@@ -28,3 +32,14 @@ vsub-fetch:
 .PHONY: vsub-gen
 vsub-gen:
 	clojure -X clj-nproxy.tool.vsub/gen
+
+# .PHONY: setup
+# setup:
+# 	mkdir -p .nproxy/
+# 	cp etc/config.edn .nproxy/
+# 	cp etc/logging.properties .nproxy/
+# 	echo "http://example.com" > .nproxy/sub.url
+# 	cd .nproxy && git clone https://github.com/vhqr0/domain-list-community
+# 	make dlc-gen
+# 	make vsub-fetch
+# 	make vsub-gen
