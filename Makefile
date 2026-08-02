@@ -7,7 +7,7 @@ compile:
 	clojure -T:build compile
 
 .PHONY: clean
-compile:
+clean:
 	clojure -T:build clean
 
 .PHONY: run
