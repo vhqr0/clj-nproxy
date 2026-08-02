@@ -15,7 +15,7 @@ run:
 	clojure \
 		-J-Djdk.httpclient.allowRestrictedHeaders=host \
 		-J-Djava.util.logging.config.file=.nproxy/logging.properties \
-		-X clj-nproxy.cli/start-server
+		-X clj-nproxy.cli/start-server '{:config-dir ".nproxy" :config-name "config.edn"}'
 
 .PHONY: dlc-gen
 dlc-gen:
