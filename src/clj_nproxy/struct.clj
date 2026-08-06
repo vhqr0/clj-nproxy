@@ -247,11 +247,11 @@
 (defn pipe
   "Pipe between client and server."
   [client server]
-  (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
-    (with-open [scope (StructuredTaskScope/open joiner)]
-      (.fork scope ^Runnable #(copy (:input-stream client) (:output-stream server)))
-      (.fork scope ^Runnable #(copy (:input-stream server) (:output-stream client)))
-      (.join scope))))
+  (with-open [scope (StructuredTaskScope/open
+                     (StructuredTaskScope$Joiner/allSuccessfulOrThrow))]
+    (.fork scope ^Runnable #(copy (:input-stream client) (:output-stream server)))
+    (.fork scope ^Runnable #(copy (:input-stream server) (:output-stream client)))
+    (.join scope)))
 
 (defn sim-conn
   "Simulate connection on internal pipe stream."

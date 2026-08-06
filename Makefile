@@ -33,6 +33,10 @@ vsub-fetch:
 vsub-gen:
 	clojure -X clj-nproxy.tool.vsub/gen
 
+.PHONY: vsub-ping
+vsub-gen:
+	clojure -X clj-nproxy.tool.vsub/ping
+
 # .PHONY: setup
 # setup:
 # 	mkdir -p .nproxy/

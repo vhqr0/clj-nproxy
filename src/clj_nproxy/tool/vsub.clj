@@ -5,9 +5,21 @@
   (:require [clojure.string :as str]
             [clojure.data.json :as json]
             [clj-nproxy.bytes :as b]
-            [clj-nproxy.config :as config]))
+            [clj-nproxy.struct :as st]
+            [clj-nproxy.http :as http]
+            [clj-nproxy.server :as server]
+            [clj-nproxy.config :as config]
+            clj-nproxy.cli)
+  (:import [java.time Duration]
+           [java.util.concurrent StructuredTaskScope
+            StructuredTaskScope$Joiner StructuredTaskScope$Configuration StructuredTaskScope$TimeoutException]))
 
 (set! clojure.core/*warn-on-reflection* true)
+
+(comment
+  (System/setProperty "jdk.httpclient.allowRestrictedHeaders" "host"))
+
+;;; parse
 
 (defn sub->urls
   "Parse sub text, return urls."
@@ -64,17 +76,99 @@
    :net-opts (node->net-opts node)
    :proxy-opts (node->proxy-opts node)})
 
+(defn nodes->outbound-opts
+  "Convert nodes to outbound opts."
+  [nodes]
+  (if (= 1 (count nodes))
+    (-> nodes first node->outbound-opts)
+    {:type :rand-dispatch :outbounds (mapv node->outbound-opts nodes)}))
+
+;;; helpers
+
+(defn read-url
+  "Read url."
+  [opts]
+  (str/trim (config/read-str opts "sub.url")))
+
 (defn read-nodes
   "Read nodes."
   [opts]
   (let [sub (config/read-str opts "sub.txt")]
-    (->> sub sub->nodes)))
+    (->> sub
+         sub->urls
+         (keep url->node)
+         (map-indexed #(assoc %2 :index %1)))))
 
 (defn print-nodes
   "Print nodes."
   [nodes]
-  (doseq [[i node] (map-indexed vector nodes)]
-    (prn {:index i :node node})))
+  (->> nodes (map (juxt :index identity)) (run! prn)))
+
+(defn select-nodes
+  "Select nodes."
+  [opts nodes]
+  (let [select (or (:select opts) (read))]
+    (if (= select :all)
+      nodes
+      (let [select (set (if (coll? select) select [select]))]
+        (->> nodes (filter #(contains? select (:index %))))))))
+
+(defn read-print-select-nodes
+  "Read, print then select nodes."
+  [opts]
+  (let [nodes (read-nodes opts)]
+    (print-nodes nodes)
+    (select-nodes opts nodes)))
+
+(defn ping-node
+  "Ping node."
+  [opts node]
+  (let [{:keys [ping-method ping-host ping-port ping-path ping-headers]
+         :or {ping-method "GET" ping-host "www.google.com" ping-port 80 ping-path "/"}}
+        opts
+        ping-hostport (http/pack-hostport ping-host ping-port)
+        outbound (-> node node->outbound-opts server/edn->outbound-opts)]
+    (server/mk-outbound
+     outbound {:host ping-host :port ping-port}
+     (fn [{is :input-stream os :output-stream}]
+       (let [req {:method ping-method
+                  :path ping-path
+                  :headers (merge {"host" ping-hostport} ping-headers)}]
+         (st/write-struct http/st-http-req os req)
+         (st/flush os)
+         (st/read-struct http/st-http-resp is))))))
+
+(defn ping-result
+  "Ping node, return result."
+  [opts node]
+  (try
+    (let [start-time (System/currentTimeMillis)
+          {:keys [status reason]} (ping-node opts node)
+          end-time (System/currentTimeMillis)
+          time (- end-time start-time)]
+      {:result :ok :time time :status status :reason reason :node node})
+    (catch Exception e
+      {:result :error :error e :node node})))
+
+(defn ping-results
+  "Ping nodes, return results."
+  [opts nodes]
+  (let [{:keys [ping-timeout] :or {ping-timeout 3000}} opts
+        aresults (atom [])]
+    (with-open [scope (StructuredTaskScope/open
+                       (StructuredTaskScope$Joiner/allSuccessfulOrThrow)
+                       (fn [^StructuredTaskScope$Configuration config]
+                         (.withTimeout config (Duration/ofMillis ping-timeout))))]
+      (->> nodes
+           (run!
+            (fn [node]
+              (.fork scope ^Runnable #(swap! aresults conj (ping-result opts node))))))
+      (try
+        (.join scope)
+        (catch StructuredTaskScope$TimeoutException _)))
+    @aresults))
+
+;;; api
 
 (defn list
   "Read and print nodes."
@@ -84,22 +178,24 @@
 (defn fetch
   "Fetch sub then read and print nodes."
   [opts]
-  (let [url (str/trim (config/read-str opts "sub.url"))
-        sub (str/trim (slurp url))]
+  (let [sub (-> opts read-url slurp str/trim)]
     (config/write opts "sub.txt" sub)
     (list opts)))
 
 (defn gen
   "Read and print nodes then select some nodes and generate outobund config."
   [opts]
-  (let [nodes (read-nodes opts)]
-    (print-nodes nodes)
-    (let [select (read)
-          select (set (if (coll? select) select [select]))
-          outbounds (vec (->> nodes
-                              (keep-indexed
-                               (fn [i node]
-                                 (when (contains? select i)
-                                   (node->outbound-opts node))))))
-          outbound {:type :rand-dispatch :outbounds outbounds}]
-      (config/write opts "sub.edn" outbound))))
+  (let [nodes (read-print-select-nodes opts)
+        outbound (nodes->outbound-opts nodes)]
+    (config/write opts "sub.edn" outbound)))
+
+(defn ping
+  "Read and print nodes then select some nodes and ping them."
+  [opts]
+  (let [nodes (read-print-select-nodes opts)]
+    (->> (ping-results opts nodes)
+         (run!
+          (fn [result]
+            (case (:result result)
+              :ok (-> result prn)
+              :error (-> result (update :error str) prn)))))))

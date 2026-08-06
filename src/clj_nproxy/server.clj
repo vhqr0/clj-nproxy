@@ -74,9 +74,7 @@
 (defmethod mk-inbound :multi [{:keys [inbounds]} callback]
   (let [inbounds (->> inbounds (mapv #(mk-inbound % callback)))]
     (st/mk-closeable
-     (fn []
-       (doseq [inbound inbounds]
-         (st/safe-close inbound))))))
+     #(run! st/safe-close inbounds))))
 
 (defmethod edn->inbound-opts :multi [opts]
   (update opts :inbounds (partial mapv edn->inbound-opts)))
