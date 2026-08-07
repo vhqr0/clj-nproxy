@@ -33,11 +33,6 @@
   (when (str/starts-with? url "vmess://")
     (-> (subs url 8) b/base64->bytes b/bytes->str json/read-str)))
 
-(defn sub->nodes
-  "Parse sub text, return vmess nodes."
-  [^String sub]
-  (->> sub sub->urls (keep url->node)))
-
 (defmulti node->net-opts
   "Convert node to net opts."
   (fn [node] (get node "net" "tcp")))
