@@ -34,7 +34,7 @@ vsub-gen:
 	clojure -X clj-nproxy.tool.vsub/gen
 
 .PHONY: vsub-ping
-vsub-gen:
+vsub-ping:
 	clojure -X clj-nproxy.tool.vsub/ping
 
 # .PHONY: setup
