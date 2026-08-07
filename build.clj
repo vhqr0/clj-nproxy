@@ -1,7 +1,6 @@
 (ns build
   (:refer-clojure :exclude [compile])
-  (:require [clojure.java.io :as io]
-            [clojure.tools.build.api :as b]))
+  (:require [clojure.tools.build.api :as b]))
 
 (def class-dir "target/classes")
 
