@@ -2,6 +2,18 @@
 test:
 	clojure -X:dev:test
 
+.PHONY: lint
+lint:
+	clj-kondo --lint src
+
+.PHONY: fmtcheck
+fmtcheck:
+	cljfmt check src
+
+.PHONY: fmtfix
+fmtfix:
+	cljfmt fix src
+
 .PHONY: compile
 compile:
 	clojure -T:build compile

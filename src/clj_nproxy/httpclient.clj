@@ -6,7 +6,7 @@
   (:import [java.util Optional]
            [java.util.concurrent CompletableFuture BlockingQueue LinkedBlockingQueue]
            [java.time Duration]
-           [java.io InputStream OutputStream]
+           [java.io InputStream]
            [java.nio ByteBuffer]
            [java.net URI ProxySelector]
            [java.net.http
