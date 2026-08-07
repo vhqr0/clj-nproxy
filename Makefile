@@ -35,7 +35,9 @@ vsub-gen:
 
 .PHONY: vsub-ping
 vsub-ping:
-	clojure -X clj-nproxy.tool.vsub/ping
+	clojure \
+		-J-Djdk.httpclient.allowRestrictedHeaders=host \
+		-X clj-nproxy.tool.vsub/ping
 
 # .PHONY: setup
 # setup:
