@@ -17,9 +17,9 @@
             WebSocket WebSocket$Builder WebSocket$Listener]
            [clj_nproxy.java QueuedWebSocketListener QueuedWebSocketListener$Message]))
 
-;;; http
-
 (set! clojure.core/*warn-on-reflection* true)
+
+;;; http
 
 (defn as-string
   ^String [s]
