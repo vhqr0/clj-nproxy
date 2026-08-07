@@ -202,7 +202,9 @@
 (defn edn->trojan-opts
   "Construct trojan opts."
   [{:keys [password] :as opts}]
-  (assoc opts :auth (trojan-auth password)))
+  (cond-> opts
+    (some? password)
+    (assoc :auth (trojan-auth password))))
 
 (defmethod net/edn->proxy-client-opts :trojan [opts] (edn->trojan-opts opts))
 (defmethod net/edn->proxy-server-opts :trojan [opts] (edn->trojan-opts opts))
