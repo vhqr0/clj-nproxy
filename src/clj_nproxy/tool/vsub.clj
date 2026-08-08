@@ -102,7 +102,7 @@
 (defn select-nodes
   "Select nodes."
   [opts nodes]
-  (let [select (or (:select opts) (read))]
+  (let [select (read)]
     (if (= select :all)
       nodes
       (let [select (set (if (coll? select) select [select]))]
