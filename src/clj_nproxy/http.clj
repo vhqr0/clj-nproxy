@@ -174,6 +174,8 @@
 
 ;;; websocket
 
+;;;; frame
+
 (def st-ws-frame
   (-> (WSFrame$IOStruct.)
       (st/wrap
@@ -189,7 +191,6 @@
         ^ReentrantLock lock (ReentrantLock.)
         awclose? (atom false)
         arclose? (atom false)
-        close?-fn (fn [] (or @arclose? @awclose?))
         write-fn (fn [{:keys [op] :as frame}]
                    (when-not @awclose?
                      (.lock lock)
@@ -200,13 +201,7 @@
                          (st/write-struct st-ws-frame os (merge frame {:mask (when mask? (b/rand 4))}))
                          (st/flush os))
                        (finally
-                         (.unlock lock))))
-                   ;; explicit return nil
-                   nil)
-        close-fn (fn []
-                   (write-fn {:op WSFrame/OP_CLOSE :fin? true :data (st/pack st/st-ushort-be 1000)}))
-        ping-fn (fn [data]
-                  (write-fn {:op WSFrame/OP_PING :fin? true :data data}))
+                         (.unlock lock)))))
         read-fn (fn []
                   (when-not @arclose?
                     (loop []
@@ -214,28 +209,20 @@
                         (condp = op
                           WSFrame/OP_CLOSE (do
                                              (reset! arclose? true)
-                                             (close-fn))
+                                             nil)
                           WSFrame/OP_PING (do
                                             (write-fn {:op WSFrame/OP_PONG :fin? fin? :data data})
                                             (recur))
                           WSFrame/OP_PONG (recur)
-                          (if (or (= op WSFrame/OP_CONTINUATION)
-                                  (= op WSFrame/OP_TEXT)
-                                  (= op WSFrame/OP_BINARY))
-                            frame
-                            (throw (ex-info "invalid op" {:reason ::invalid-op :op op}))))))))
-        wait-closed-fn (fn []
-                         (loop []
-                           (when-not @arclose?
-                             (read-fn)
-                             (recur))))
+                          WSFrame/OP_CONTINUATION frame
+                          WSFrame/OP_TEXT frame
+                          WSFrame/OP_BINARY frame
+                          (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))))
         websocket {:stream stream
-                   :close?-fn close?-fn
+                   :awclose? awclose?
+                   :arclose? arclose?
                    :write-fn write-fn
-                   :close-fn close-fn
-                   :ping-fn ping-fn
-                   :read-fn read-fn
-                   :wait-closed-fn wait-closed-fn}]
+                   :read-fn read-fn}]
     (callback websocket)))
 
 ;;;; handshake
@@ -304,22 +291,25 @@
   (st/write-fn->buffered-output-stream
    (fn [b]
      (when-not (zero? (b/length b))
-       (write-fn {:op WSFrame/OP_BINARY :fin? true :data b})))))
+       (write-fn {:op WSFrame/OP_BINARY :fin? true :data b})))
+   (fn []
+     (write-fn {:op WSFrame/OP_CLOSE :fin? true :data (st/pack st/st-ushort-be 1000)}))))
+
+(defn websocket->stream
+  "Convert websocket to stream."
+  [websocket]
+  {:ws/websocket websocket
+   :input-stream (websocket->input-stream websocket)
+   :output-stream (websocket->output-stream websocket)})
 
 (defmethod net/mk-wrap-client :ws [server opts callback]
   (mk-client-websocket
    server opts
    (fn [websocket]
-     (callback (assoc server
-                      :ws/websocket websocket
-                      :input-stream (websocket->input-stream websocket)
-                      :output-stream (websocket->output-stream websocket))))))
+     (callback (merge server (websocket->stream websocket))))))
 
 (defmethod net/mk-wrap-server :ws [client opts callback]
   (mk-server-websocket
    client opts
    (fn [websocket]
-     (callback (assoc client
-                      :ws/websocket websocket
-                      :input-stream (websocket->input-stream websocket)
-                      :output-stream (websocket->output-stream websocket))))))
+     (callback (merge client (websocket->stream websocket))))))
