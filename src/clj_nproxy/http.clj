@@ -186,7 +186,7 @@
 
 (defn mk-websocket
   "Make websocket."
-  [stream mask? callback]
+  [stream mask?]
   (let [{is :input-stream os :output-stream} stream
         ^ReentrantLock lock (ReentrantLock.)
         awclose? (atom false)
@@ -217,13 +217,12 @@
                           WSFrame/OP_CONTINUATION frame
                           WSFrame/OP_TEXT frame
                           WSFrame/OP_BINARY frame
-                          (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))))
-        websocket {:stream stream
-                   :awclose? awclose?
-                   :arclose? arclose?
-                   :write-fn write-fn
-                   :read-fn read-fn}]
-    (callback websocket)))
+                          (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))))]
+    {:stream stream
+     :awclose? awclose?
+     :arclose? arclose?
+     :write-fn write-fn
+     :read-fn read-fn}))
 
 ;;;; handshake
 
@@ -237,7 +236,7 @@
 
 (defn mk-client-websocket
   "Make client websocket."
-  [server opts callback]
+  [server opts]
   (let [{is :input-stream os :output-stream} server
         {:keys [path headers] :or {path "/"}} opts
         headers (merge
@@ -252,11 +251,11 @@
                    valid-version
                    (valid-status "101")
                    (valid-connection "websocket"))]
-      (mk-websocket server true #(callback (merge % {:http-resp resp}))))))
+      (merge (mk-websocket server true) {:http-resp resp}))))
 
 (defn mk-server-websocket
   "Make server websocket."
-  [client opts callback]
+  [client opts]
   (let [{is :input-stream os :output-stream} client
         {:keys [headers]} opts
         req (-> (st/read-struct st-http-req is)
@@ -271,7 +270,7 @@
                   "sec-websocket-accept" accept})]
     (st/write-struct st-http-resp os {:status "101" :reason "Switching Protocols" :headers headers})
     (st/flush os)
-    (mk-websocket client false #(callback (merge % {:http-req req})))))
+    (merge (mk-websocket client false) {:http-req req})))
 
 ;;;; stream
 
@@ -303,13 +302,15 @@
    :output-stream (websocket->output-stream websocket)})
 
 (defmethod net/mk-wrap-client :ws [server opts callback]
-  (mk-client-websocket
-   server opts
-   (fn [websocket]
-     (callback (merge server (websocket->stream websocket))))))
+  (callback
+   (merge
+    server
+    (websocket->stream
+     (mk-client-websocket server opts)))))
 
 (defmethod net/mk-wrap-server :ws [client opts callback]
-  (mk-server-websocket
-   client opts
-   (fn [websocket]
-     (callback (merge client (websocket->stream websocket))))))
+  (callback
+   (merge
+    client
+    (websocket->stream
+     (mk-server-websocket client opts)))))
