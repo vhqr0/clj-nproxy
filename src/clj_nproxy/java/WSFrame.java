@@ -15,8 +15,7 @@ public record WSFrame(int op, boolean fin, byte[] mask, byte[] data) {
   public static final int OP_PONG = 0xa;
 
   public static void maskInplace(byte[] data, byte[] mask) {
-    for (int i = 0; i < data.length; i++)
-      data[i] ^= mask[i & 3];
+    for (int i = 0; i < data.length; i++) data[i] ^= mask[i & 3];
   }
 
   public static final class IOStruct implements IIOStruct<WSFrame> {
