@@ -6,7 +6,8 @@
             [clj-nproxy.crypto :as crypto]
             [clj-nproxy.net :as net])
   (:import [java.util.concurrent.locks ReentrantLock]
-           [java.io InputStream OutputStream ByteArrayInputStream SequenceInputStream]))
+           [java.io InputStream OutputStream ByteArrayInputStream SequenceInputStream]
+           [clj_nproxy.java WSFrame WSFrame$IOStruct]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -173,60 +174,13 @@
 
 ;;; websocket
 
-(def st-fake-ulong-be
-  (-> st/st-long-be (st/wrap-validator nat-int?)))
-
-(defn mask-data-inplace
-  "Mask data inplace."
-  [^bytes data ^bytes mask]
-  (let [data (bytes data)
-        mask (bytes mask)]
-    (dotimes [idx (alength data)]
-      (let [i (aget mask (bit-and 3 idx))]
-        (aset data idx (unchecked-byte (bit-xor i (aget data idx))))))))
-
-;;;; frame
-
-(defn read-websocket-frame
-  "Read frame from stream."
-  [is]
-  (let [fin-op (st/read-struct st/st-ubyte is)
-        fin? (not (zero? (bit-and 0x80 fin-op)))
-        op (bit-and 0x7f fin-op)
-        mask-len (st/read-struct st/st-ubyte is)
-        mask? (not (zero? (bit-and 0x80 mask-len)))
-        len (bit-and 0x7f mask-len)
-        len (case len
-              126 (st/read-struct st/st-ushort-be is)
-              127 (st/read-struct st-fake-ulong-be is)
-              len)
-        mask (when mask? (st/read-bytes is 4))
-        data (st/read-bytes is len)]
-    (when mask?
-      (mask-data-inplace data mask))
-    {:op op :fin? fin? :mask mask :data data}))
-
-(defn write-websocket-frame
-  "Write frame to stream."
-  [os {:keys [op fin? mask data]}]
-  (let [mask? (some? mask)
-        len (b/length data)]
-    (st/write-struct st/st-ubyte os (+ op (if fin? 128 0)))
-    (cond
-      (>= len 65536)
-      (do
-        (st/write-struct st/st-ubyte os (+ 127 (if mask? 128 0)))
-        (st/write-struct st/st-long-be os len))
-      (>= len 126)
-      (do
-        (st/write-struct st/st-ubyte os (+ 126 (if mask? 128 0)))
-        (st/write-struct st/st-ushort-be os len))
-      :else
-      (st/write-struct st/st-ubyte os (+ len (if mask? 128 0))))
-    (when mask?
-      (st/write os mask)
-      (mask-data-inplace data mask))
-    (st/write os data)))
+(def st-ws-frame
+  (-> (WSFrame$IOStruct.)
+      (st/wrap
+       (fn [^WSFrame frame]
+         {:op (.op frame) :fin? (.fin frame) :mask (.mask frame) :data (.data frame)})
+       (fn [{:keys [op fin? mask data]}]
+         (WSFrame. (int op) (boolean fin?) mask data)))))
 
 (defn mk-websocket
   "Make websocket."
@@ -238,37 +192,38 @@
         close?-fn (fn [] (or @arclose? @awclose?))
         write-fn (fn [{:keys [op] :as frame}]
                    (when-not @awclose?
+                     (.lock lock)
                      (try
-                       (.lock lock)
                        (when-not @awclose?
-                         (when (= op 8)
+                         (when (= op WSFrame/OP_CLOSE)
                            (reset! awclose? true))
-                         (write-websocket-frame os (merge frame {:mask (when mask? (b/rand 4))}))
+                         (st/write-struct st-ws-frame os (merge frame {:mask (when mask? (b/rand 4))}))
                          (st/flush os))
                        (finally
-                         (.unlock lock)))))
+                         (.unlock lock))))
+                   ;; explicit return nil
+                   nil)
         close-fn (fn []
-                   (write-fn {:op 8 :fin? true :data (st/pack st/st-ushort-be 1000)}))
+                   (write-fn {:op WSFrame/OP_CLOSE :fin? true :data (st/pack st/st-ushort-be 1000)}))
         ping-fn (fn [data]
-                  (write-fn {:op 9 :fin? true :data data}))
+                  (write-fn {:op WSFrame/OP_PING :fin? true :data data}))
         read-fn (fn []
                   (when-not @arclose?
                     (loop []
-                      (let [{:keys [op fin? data] :as frame} (read-websocket-frame is)]
-                        (case (long op)
-                          ;; close
-                          8 (do
-                              (reset! arclose? true)
-                              (close-fn))
-                          ;; ping
-                          9 (do
-                              (write-fn {:op 10 :fin? fin? :data data})
-                              (recur))
-                          ;; pong
-                          10 (recur)
-                          ;; continue/text/binary
-                          (0 1 2) frame
-                          (throw (ex-info "invalid op" {:reason ::invalid-op :op op})))))))
+                      (let [{:keys [op fin? data] :as frame} (st/read-struct st-ws-frame is)]
+                        (condp = op
+                          WSFrame/OP_CLOSE (do
+                                             (reset! arclose? true)
+                                             (close-fn))
+                          WSFrame/OP_PING (do
+                                            (write-fn {:op WSFrame/OP_PONG :fin? fin? :data data})
+                                            (recur))
+                          WSFrame/OP_PONG (recur)
+                          (if (or (= op WSFrame/OP_CONTINUATION)
+                                  (= op WSFrame/OP_TEXT)
+                                  (= op WSFrame/OP_BINARY))
+                            frame
+                            (throw (ex-info "invalid op" {:reason ::invalid-op :op op}))))))))
         wait-closed-fn (fn []
                          (loop []
                            (when-not @arclose?
@@ -349,7 +304,7 @@
   (st/write-fn->buffered-output-stream
    (fn [b]
      (when-not (zero? (b/length b))
-       (write-fn {:op 2 :fin? true :data b})))))
+       (write-fn {:op WSFrame/OP_BINARY :fin? true :data b})))))
 
 (defmethod net/mk-wrap-client :ws [server opts callback]
   (mk-client-websocket
