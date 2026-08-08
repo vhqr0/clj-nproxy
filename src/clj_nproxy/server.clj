@@ -3,7 +3,8 @@
   (:require [clojure.string :as str]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])
-  (:import [java.util.logging Logger Level]))
+  (:import [java.util.logging Logger Level]
+           [java.io InputStream OutputStream]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -27,7 +28,9 @@
 (defmethod mk-outbound :block [{:keys [block-ms] :or {block-ms 3000}} _client callback]
   (when (pos? block-ms)
     (Thread/sleep ^long block-ms))
-  (net/mk-net-client {:type :null} callback))
+  (callback
+   {:input-stream (InputStream/nullInputStream)
+    :output-stream (OutputStream/nullOutputStream)}))
 
 ;;; direct
 

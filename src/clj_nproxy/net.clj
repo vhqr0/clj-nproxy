@@ -1,6 +1,5 @@
 (ns clj-nproxy.net
-  "Network abstraction."
-  (:import [java.io InputStream OutputStream]))
+  "Network abstraction.")
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -72,10 +71,3 @@
   (-> opts
       (update :net-opts edn->net-server-opts)
       (update :wrap-opts edn->wrap-server-opts)))
-
-;;; null
-
-(defmethod mk-net-client :null [_opts callback]
-  (callback
-   {:input-stream (InputStream/nullInputStream)
-    :output-stream (OutputStream/nullOutputStream)}))
