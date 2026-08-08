@@ -92,7 +92,7 @@
 
 ;;; tag
 
-(defn match-tag
+(defn match-host-tag
   "Match host's tag in tags."
   [host tags]
   (when (not (str/blank? host))
@@ -101,15 +101,29 @@
       (when-let [host (second (str/split host #"\." 2))]
         (recur host tags)))))
 
+(defn match-client-tag
+  "Match client's tag."
+  [client tags default-tag]
+  (when (nil? (:tag client))
+    (or
+     (when (some? tags)
+       (match-host-tag (:host client) tags))
+     default-tag)))
+
+(defn client-with-tag
+  "Update client's tag."
+  [client tags default-tag]
+  (if-let [tag (match-client-tag client tags default-tag)]
+    (assoc client :tag tag)
+    client))
+
 (defmethod mk-inbound :tag [{:keys [inbound tags default-tag]} callback]
   (mk-inbound
    inbound
-   (fn [{:keys [host] :as client}]
-     (let [tag (or
-                (when (some? tags)
-                  (match-tag host tags))
-                default-tag)]
-       (callback (assoc client :tag tag))))))
+   (fn [client]
+     (-> client
+         (client-with-tag tags default-tag)
+         callback))))
 
 (defmethod edn->inbound-opts :tag [opts]
   (update opts :inbound edn->inbound-opts))
