@@ -262,8 +262,8 @@
               sos (PipedOutputStream.)]
     (.connect cos sis)
     (.connect sos cis)
-    (let [joiner (StructuredTaskScope$Joiner/allSuccessfulOrThrow)]
-      (with-open [scope (StructuredTaskScope/open joiner)]
-        (.fork scope ^Runnable #(client-proc {:input-stream cis :output-stream cos}))
-        (.fork scope ^Runnable #(server-proc {:input-stream sis :output-stream sos}))
-        (.join scope)))))
+    (with-open [scope (StructuredTaskScope/open
+                       (StructuredTaskScope$Joiner/allSuccessfulOrThrow))]
+      (.fork scope ^Runnable #(client-proc {:input-stream cis :output-stream cos}))
+      (.fork scope ^Runnable #(server-proc {:input-stream sis :output-stream sos}))
+      (.join scope))))
