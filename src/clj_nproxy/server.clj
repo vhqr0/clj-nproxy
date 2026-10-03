@@ -153,6 +153,16 @@
       (update :outbound edn->outbound-opts)
       (update :resolve-opts net/edn->resolve-opts)))
 
+;;; hosts
+
+(defmethod mk-outbound :hosts [{:keys [outbound hosts]} {:keys [host resolved-host] :as client} callback]
+  (let [addrs (when (nil? resolved-host) (get hosts host))
+        addr (some-> addrs seq rand-nth)]
+    (mk-outbound outbound (cond-> client (some? addr) (assoc :resolved-host addr)) callback)))
+
+(defmethod edn->outbound-opts :hosts [opts]
+  (update opts :outbound edn->outbound-opts))
+
 ;;; log
 
 (def logger (delay (Logger/getLogger "nproxy")))
