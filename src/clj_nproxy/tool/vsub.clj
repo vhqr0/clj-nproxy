@@ -101,7 +101,7 @@
 
 (defn select-nodes
   "Select nodes."
-  [opts nodes]
+  [nodes]
   (let [select (read)]
     (if (= select :all)
       nodes
@@ -113,7 +113,7 @@
   [opts]
   (let [nodes (read-nodes opts)]
     (print-nodes nodes)
-    (select-nodes opts nodes)))
+    (select-nodes nodes)))
 
 (defn ping-node
   "Ping node."

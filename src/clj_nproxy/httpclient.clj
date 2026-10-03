@@ -1,6 +1,8 @@
 (ns clj-nproxy.httpclient
   "HTTP/WebSocket client wrapper over JDK java.net.http."
-  (:require [clj-nproxy.bytes :as b]
+  (:require [clojure.core.cache.wrapped :as cachew]
+            [clojure.data.json :as json]
+            [clj-nproxy.bytes :as b]
             [clj-nproxy.struct :as st]
             [clj-nproxy.net :as net])
   (:import [java.util Optional]
@@ -8,7 +10,7 @@
            [java.time Duration]
            [java.io InputStream]
            [java.nio ByteBuffer]
-           [java.net URI ProxySelector]
+           [java.net URLEncoder URI ProxySelector]
            [java.net.http
             HttpHeaders
             HttpClient HttpClient$Builder HttpClient$Version HttpClient$Redirect
@@ -276,6 +278,8 @@
          (websocket-builder-apply-timeout opts)
          (.buildAsync (as-uri uri) listener)))))
 
+;;;; net client
+
 (defn queue->read-fn
   [^BlockingQueue queue]
   (fn []
@@ -302,3 +306,38 @@
 
 (defmethod net/edn->net-client-opts :ws [opts]
   (assoc opts :client (delay (->client opts))))
+
+;;; doh-json
+
+;; - https://dns.google/resolve (https://8.8.8.8/resolve)
+;; - https://cloudflare-dns.com/dns-query (https://1.1.1.1/dns-query)
+;; - https://dns.alidns.com/resolve (https://223.5.5.5/resolve)
+;; - https://doh.pub/resolve
+;; - https://dns.adguard-dns.com/resolve
+;; - https://dns.nextdns.io/dns-query
+
+(defn doh-json-request
+  ([opts name type]
+   (doh-json-request (->client opts) opts name type))
+  ([client opts name type]
+   (let [opts (-> opts
+                  (assoc :method "GET" :as :string)
+                  (update :uri (partial format "%s?name=%s&type=%s") (URLEncoder/encode name) type)
+                  (update :headers assoc "accept" "application/dns-json"))
+         response (request client opts)
+         status (response->status response)]
+     (if (= status 200)
+       (-> response response->body json/read-str)
+       (throw (ex-info "invalid doh http status" {:reason ::invalid-doh-http-status :status status :name name :type type}))))))
+
+(defmethod net/resolve :doh-json [{:keys [client doh-cache doh-type] :or {doh-type "A"} :as opts} host]
+  (let [result (cachew/lookup-or-miss doh-cache host #(doh-json-request (force client) opts % doh-type))
+        addrs (when (= 0 (get result "Status"))
+                (let [type (case doh-type "A" 1 "AAAA" 28)]
+                  (->> (get result "Answer") (keep #(when (= type (get % "type")) (get % "data"))))))]
+    (if (seq addrs)
+      (rand-nth addrs)
+      (throw (ex-info "doh no answers" {:reason ::doh-no-answers :result result})))))
+
+(defmethod net/edn->resolve-opts :doh-json [{:keys [doh-ttl-ms] :or {doh-ttl-ms 30000} :as opts}]
+  (assoc opts :client (delay (->client opts)) :doh-cache (cachew/ttl-cache-factory {} {:ttl doh-ttl-ms})))

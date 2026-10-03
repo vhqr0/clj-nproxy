@@ -1,5 +1,6 @@
 (ns clj-nproxy.net
-  "Network abstraction.")
+  "Network abstraction."
+  (:refer-clojure :exclude [resolve]))
 
 (set! clojure.core/*warn-on-reflection* true)
 
@@ -33,6 +34,10 @@
   callback: accept {:keys [input-stream output-stream host port]}"
   (fn [_client opts _callback] (:type opts)))
 
+(defmulti resolve
+  "Resolve host based on options, return resolved host."
+  (fn [opts _host] (:type opts)))
+
 (defmulti edn->net-client-opts :type)
 (defmulti edn->net-server-opts :type)
 (defmethod edn->net-client-opts :default [opts] opts)
@@ -47,6 +52,9 @@
 (defmulti edn->proxy-server-opts :type)
 (defmethod edn->proxy-client-opts :default [opts] opts)
 (defmethod edn->proxy-server-opts :default [opts] opts)
+
+(defmulti edn->resolve-opts :type)
+(defmethod edn->resolve-opts :default [opts] opts)
 
 ;;; wrap
 
