@@ -34,8 +34,8 @@
 
 ;;; direct
 
-(defmethod mk-outbound :direct [_opts {:keys [host port]} callback]
-  (net/mk-net-client {:type :tcp :host host :port port} callback))
+(defmethod mk-outbound :direct [_opts {:keys [host resolved-host port]} callback]
+  (net/mk-net-client {:type :tcp :host (or resolved-host host) :port port} callback))
 
 ;;; redirect
 
@@ -56,11 +56,11 @@
    (fn [client]
      (net/mk-proxy-server client proxy-opts callback))))
 
-(defmethod mk-outbound :proxy [{:keys [net-opts proxy-opts]} {:keys [host port]} callback]
+(defmethod mk-outbound :proxy [{:keys [net-opts proxy-opts]} {:keys [host resolved-host port]} callback]
   (net/mk-net-client
    net-opts
    (fn [server]
-     (net/mk-proxy-client server proxy-opts host port callback))))
+     (net/mk-proxy-client server proxy-opts (or resolved-host host) port callback))))
 
 (defmethod edn->inbound-opts :proxy [opts]
   (-> opts
@@ -135,6 +135,23 @@
 
 (defmethod edn->outbound-opts :tag-dispatch [opts]
   (update opts :outbounds update-vals edn->outbound-opts))
+
+;;; resolve
+
+(defn client-with-resolved-host
+  "Resolve client's host, unless already resolved by previous middleware."
+  [client resolve-opts]
+  (if (nil? (:resolved-host client))
+    (assoc client :resolved-host (net/resolve resolve-opts (:host client)))
+    client))
+
+(defmethod mk-outbound :resolve [{:keys [outbound resolve-opts]} client callback]
+  (mk-outbound outbound (client-with-resolved-host client resolve-opts) callback))
+
+(defmethod edn->outbound-opts :resolve [opts]
+  (-> opts
+      (update :outbound edn->outbound-opts)
+      (update :resolve-opts net/edn->resolve-opts)))
 
 ;;; log
 

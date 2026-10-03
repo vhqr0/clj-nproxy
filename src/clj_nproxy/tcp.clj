@@ -117,3 +117,8 @@
   [^SSLSocket socket]
   (let [^SSLSession session (.getSession socket)]
     (.getPeerCertificates session)))
+
+;;; resolve
+
+(defmethod net/resolve :system [_opts ^String host]
+  (.getHostAddress (InetAddress/getByName host)))
