@@ -110,20 +110,12 @@
        (match-host-tag (:host client) tags))
      default-tag)))
 
-(defn client-with-tag
-  "Update client's tag."
-  [client tags default-tag]
-  (if-let [tag (match-client-tag client tags default-tag)]
-    (assoc client :tag tag)
-    client))
-
 (defmethod mk-inbound :tag [{:keys [inbound tags default-tag]} callback]
   (mk-inbound
    inbound
    (fn [client]
-     (-> client
-         (client-with-tag tags default-tag)
-         callback))))
+     (let [tag (match-client-tag client tags default-tag)]
+       (callback (cond-> client (some? tag) (assoc :tag tag)))))))
 
 (defmethod edn->inbound-opts :tag [opts]
   (update opts :inbound edn->inbound-opts))
@@ -138,15 +130,11 @@
 
 ;;; resolve
 
-(defn client-with-resolved-host
-  "Resolve client's host, unless already resolved by previous middleware."
-  [client resolve-opts]
-  (if (nil? (:resolved-host client))
-    (assoc client :resolved-host (net/resolve resolve-opts (:host client)))
-    client))
-
 (defmethod mk-outbound :resolve [{:keys [outbound resolve-opts]} client callback]
-  (mk-outbound outbound (client-with-resolved-host client resolve-opts) callback))
+  (let [client (cond-> client
+                 (nil? (:resolved-host client))
+                 (assoc :resolved-host (net/resolve resolve-opts (:host client))))]
+    (mk-outbound outbound client callback)))
 
 (defmethod edn->outbound-opts :resolve [opts]
   (-> opts
@@ -156,9 +144,13 @@
 ;;; hosts
 
 (defmethod mk-outbound :hosts [{:keys [outbound hosts]} {:keys [host resolved-host] :as client} callback]
-  (let [addrs (when (nil? resolved-host) (get hosts host))
-        addr (some-> addrs seq rand-nth)]
-    (mk-outbound outbound (cond-> client (some? addr) (assoc :resolved-host addr)) callback)))
+  (let [resolved-host (when (nil? (:resolved-host client))
+                        (when-let [addrs (get hosts (:host client))]
+                          (if (string? addrs)
+                            addrs
+                            (rand-nth addrs))))
+        client (cond-> client (some? resolved-host) (assoc :resolved-host resolved-host))]
+    (mk-outbound outbound client callback)))
 
 (defmethod edn->outbound-opts :hosts [opts]
   (update opts :outbound edn->outbound-opts))
